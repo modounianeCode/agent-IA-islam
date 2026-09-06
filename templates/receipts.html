@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Recus{% endblock %}
+
+{% block content %}
+<h2>Recus / Quittances</h2>
+
+<div class="card">
+    <div class="actions">
+        <a href="{{ url_for('new_receipt') }}" class="btn btn-primary">Nouveau recu</a>
+        <a href="{{ url_for('export_csv', doc_type='receipts') }}" class="btn btn-secondary">Exporter CSV</a>
+    </div>
+
+    {% if receipts %}
+    <table>
+        <thead>
+            <tr>
+                <th>Numero</th>
+                <th>Client</th>
+                <th>Telephone</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in receipts|reverse %}
+            <tr>
+                <td>REC-{{ "%04d"|format(r.id) }}</td>
+                <td>{{ r.client_name }}</td>
+                <td>{{ r.client_phone or '-' }}</td>
+                <td>{{ r.created_at }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('view_receipt', doc_id=r.id) }}" class="btn btn-primary" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;">Voir</a>
+                    <a href="{{ url_for('receipt_pdf', doc_id=r.id) }}" class="btn btn-success" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;">PDF</a>
+                    <form method="POST" action="{{ url_for('delete_receipt', doc_id=r.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce recu ?')">
+                        <button type="submit" class="btn btn-danger" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;">Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="margin-top: 1rem; color: #7f8c8d;">Aucun recu pour l'instant. <a href="{{ url_for('new_receipt') }}">Creer un recu</a></p>
+    {% endif %}
+</div>
+{% endblock %}

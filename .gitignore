@@ -1,0 +1,19 @@
+# Environnement virtuel
+.venv/
+venv/
+
+# Base de données et données brutes volumineuses
+data/agent.db
+data/agent.db-*
+data/raw/
+data/progress.json
+data/pdf/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Outils
+.DS_Store
+*.log

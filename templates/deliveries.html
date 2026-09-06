@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Bons de livraison{% endblock %}
+
+{% block content %}
+<h2>Bons de livraison</h2>
+
+<div class="card">
+    <div class="actions">
+        <a href="{{ url_for('new_delivery') }}" class="btn btn-success">Nouveau bon de livraison</a>
+        <a href="{{ url_for('export_csv', doc_type='deliveries') }}" class="btn btn-secondary">Exporter CSV</a>
+    </div>
+
+    {% if deliveries %}
+    <table>
+        <thead>
+            <tr>
+                <th>Numero</th>
+                <th>Client</th>
+                <th>Date prevue</th>
+                <th>Date creation</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in deliveries|reverse %}
+            <tr>
+                <td>BL-{{ "%04d"|format(d.id) }}</td>
+                <td>{{ d.client_name }}</td>
+                <td>{{ d.expected_date or '-' }}</td>
+                <td>{{ d.created_at }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('view_delivery', doc_id=d.id) }}" class="btn btn-primary" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;">Voir</a>
+                    <a href="{{ url_for('delivery_pdf', doc_id=d.id) }}" class="btn btn-success" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;">PDF</a>
+                    <form method="POST" action="{{ url_for('delete_delivery', doc_id=d.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce bon de livraison ?')">
+                        <button type="submit" class="btn btn-danger" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;">Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="margin-top: 1rem; color: #7f8c8d;">Aucun bon de livraison pour l'instant. <a href="{{ url_for('new_delivery') }}">Creer un bon de livraison</a></p>
+    {% endif %}
+</div>
+{% endblock %}
