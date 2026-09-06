@@ -1,5 +1,7 @@
 # Agent IA — Apprendre l'Islam
 
+[![CI](https://github.com/modounianeCode/agent-IA-islam/actions/workflows/ci.yml/badge.svg)](https://github.com/modounianeCode/agent-IA-islam/actions/workflows/ci.yml)
+
 Agent conversationnel en ligne de commande (CLI), en français, **100 % hors-ligne** une fois la base construite. Il repose sur une base SQLite locale (Coran + 17 recueils de hadiths) et un modèle de langage local via [Ollama](https://ollama.com) — aucune clé API, aucune requête envoyée à un service externe.
 
 > ⚠️ **Avertissement** : les réponses de l'IA sont un outil d'apprentissage, pas une source d'autorité religieuse. Les citations du Coran et des hadiths affichées proviennent **de la base locale**, jamais inventées.
@@ -77,6 +79,8 @@ python apprendre_islam.py quiz
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+Chaque push sur `main` exécute automatiquement les **24 tests unitaires** via GitHub Actions (workflow `.github/workflows/ci.yml`), après reconstruction complète de la base locale.
 
 ---
 
