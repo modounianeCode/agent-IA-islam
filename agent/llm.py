@@ -316,9 +316,120 @@ def check_model() -> str | None:
     return None
 
 
+# Expression pour détecter une référence Coran du type « 2:255 » (sourate:verset).
+# La sourate va de 1 à 114 (3 chiffres max), le verset jusqu'à 286 (3 chiffres,
+# mais on tolère jusqu'à 4 pour signaler proprement les valeurs hors limite).
+_QURAN_REF = re.compile(r"\b(\d{1,3})\s*[:：]\s*(\d{1,4})\b")
+
+# Alias livre -> slug validé dans la base (même logique que db.ALIASES).
+_ALIAS_TO_SLUG = {
+    "bukhari": "bukhari",
+    "muslim": "muslim",
+    "abudawud": "abudawud",
+    "abou daoud": "abudawud",
+    "abou dawud": "abudawud",
+    "abu daoud": "abudawud",
+    "abu dawud": "abudawud",
+    "tirmidhi": "tirmidhi",
+    "tirmizi": "tirmidhi",
+    "nasai": "nasai",
+    "nasa'i": "nasai",
+    "nasa-i": "nasai",
+    "ibn majah": "ibnmajah",
+    "ibn maja": "ibnmajah",
+    "malik": "malik",
+    "muwatta": "malik",
+    "ahmad": "ahmed",
+    "ahmed": "ahmed",
+    "darimi": "darimi",
+    "riyad": "riyad_assalihin",
+    "riyad as-salihin": "riyad_assalihin",
+    "shamail": "shamail_muhammadiyah",
+    "bulugh": "bulugh_almaram",
+    "adab": "aladab_almufrad",
+    "mishkat": "mishkat_almasabih",
+    "nawawi": "nawawi40",
+    "40 hadith": "nawawi40",
+    "an-nawawi": "nawawi40",
+    "qudsi": "qudsi40",
+    "shah waliullah": "shahwaliullah40",
+}
+
+
 def _mask_invented_refs(text: str) -> str:
     """Remplace les références « livre + numéro » non fiables par un avertissement."""
     return _INVENTED_REF.sub("(référence à vérifier)", text)
+
+
+def _norm_book(raw: str) -> str | None:
+    """Normalise un nom de livre tapé par l'IA vers le slug de la base."""
+    key = re.sub(r"\s+", " ", raw.strip().lower()).strip(" .:")
+    # Retire les préfixes/articles fréquents (sahih, sunan, al-, ...)
+    key = re.sub(r"^(?:sahih|sunan|jami|musnad|muwatta|the forty|forty)\s+", "", key)
+    key = re.sub(r"^al(?:-|\s)", "", key)
+    key = key.replace("assalihin", "as-salihin").replace("al-maram", "almaram")
+    key = key.replace("almuhammadiyah", "muhammadiyah").strip()
+    if key in _ALIAS_TO_SLUG:
+        return _ALIAS_TO_SLUG[key]
+    # correspondance partielle / préfixe
+    for alias, slug in _ALIAS_TO_SLUG.items():
+        if key.startswith(alias) or alias.startswith(key):
+            return slug
+    return None
+
+
+def validate_quran_refs(text: str) -> str:
+    """Valide chaque « sourate:verset » cité contre la base locale.
+
+    Les références inexistantes ou hors limites sont signalées par un
+    avertissement, sans jamais supprimer le texte voisin.
+    """
+    from agent import db  # import local pour éviter les cycles
+
+    def _replace(match: re.Match) -> str:
+        surah = int(match.group(1))
+        ayah = int(match.group(2))
+        total = db.surah_total_verses(surah)
+        if total is None:
+            return f"{match.group(0)} ⚠️(sourate {surah} inexistante)"
+        if ayah < 1 or ayah > total:
+            return f"{match.group(0)} ⚠️( Coran {surah}:{ayah} hors limite : {total} versets)"
+        return match.group(0)
+
+    return _QURAN_REF.sub(_replace, text)
+
+
+def validate_hadith_refs(text: str) -> str:
+    """Valide chaque « livre + numéro » de hadith cité contre la base locale.
+
+    Toute référence dont le couple (livre, n°) n'existe pas est remplacée par
+    un signal clair, de façon plus précise que le simple masquage.
+    """
+    from agent import db
+
+    def _replace(match: re.Match) -> str:
+        original = match.group(0)
+        book_raw = match.group("book")
+        number = int(match.group("num"))
+        slug = _norm_book(book_raw)
+        if slug and db.hadith_exists(slug, number):
+            return original
+        return f"(⚠️ hadith à vérifier : {original})"
+
+    pattern = re.compile(
+        r"(?P<book>" + _KNOWN_BOOKS + r")\s*(?:hadith|n[°o]?|num[ée]ro)?\s*#?(?P<num>\d{1,7})\b",
+        re.IGNORECASE,
+    )
+    return pattern.sub(_replace, text).replace("(⚠️ hadith à vérifier : (⚠️", "(⚠️ hadith à vérifier : ")
+
+
+def validate_generated(text: str) -> str:
+    """Applique toutes les validations de non-hallucination sur une réponse IA."""
+    if not text:
+        return text
+    text = validate_quran_refs(text)
+    text = validate_hadith_refs(text)
+    return text
 
 
 def chat(messages: list[dict], model: str = MODEL_DEFAULT, stream: bool = True, strict: bool = False):
@@ -343,14 +454,14 @@ def chat(messages: list[dict], model: str = MODEL_DEFAULT, stream: bool = True, 
                 break
         text = "".join(full)
         if strict:
-            text = _mask_invented_refs(text)
+            text = validate_generated(text)
         print(text, flush=True)
         return text
     resp = _post(f"{BASE_URL}/api/chat", {"model": model, "messages": messages, "stream": False})
     data = json.loads(resp.read().decode("utf-8"))
     text = data.get("message", {}).get("content", "")
     if strict:
-        text = _mask_invented_refs(text)
+        text = validate_generated(text)
     return text
 
 

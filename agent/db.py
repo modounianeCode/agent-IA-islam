@@ -452,6 +452,36 @@ def get_hadith(book: str, number: int) -> sqlite3.Row | None:
         ).fetchone()
 
 
+def ayah_exists(surah: int, ayah: int) -> bool:
+    """Vérifie qu'un verset (sourate:verset) existe réellement dans la base."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM ayahs WHERE surah = ? AND ayah = ?",
+            (surah, ayah),
+        ).fetchone()
+    return row is not None
+
+
+def surah_total_verses(surah: int) -> int | None:
+    """Retourne le nombre de versets d'une sourate, ou None si inexistante."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT total_verses FROM surahs WHERE id = ?", (surah,)
+        ).fetchone()
+    return row["total_verses"] if row else None
+
+
+def hadith_exists(book: str, number: int) -> bool:
+    """Vérifie qu'un hadith (livre + n°) existe réellement dans la base."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM hadiths h JOIN hadith_books b ON b.id = h.book_id"
+            " WHERE b.slug = ? AND h.hadith_number = ?",
+            (book, number),
+        ).fetchone()
+    return row is not None
+
+
 def random_hadith(book: str | None = None) -> sqlite3.Row:
     import random
 

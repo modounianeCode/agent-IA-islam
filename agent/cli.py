@@ -421,7 +421,7 @@ def _explain_hadith_from_row(row) -> str:
         "Traduis en français ce hadith de façon fidèle puis, en 3 points, ce qu'on en retient "
         "pratiquement pour aujourd'hui. Cite le livre et le n°."
     )
-    llm.chat(llm.teacher_messages(prompt, context))
+    llm.chat(llm.teacher_messages(prompt, context), strict=True)
     return ""
 
 
@@ -748,7 +748,7 @@ def _translate_to_wolof(text: str, reference: str) -> str:
         "N'invente AUCUNE citation ni numéro de hadith."
     )
     msgs = llm.teacher_messages(prompt, context)
-    text = llm.chat(msgs, stream=False)
+    text = llm.chat(msgs, stream=False, strict=True)
     print(text, flush=True)
     return ""
 
@@ -827,7 +827,7 @@ def ask_llm(question: str) -> str:
     context = _grounding_context(question)
     print("🤖 L'IA réfléchit…\n")
     msgs = llm.teacher_messages(question, context)
-    llm.chat(msgs)
+    llm.chat(msgs, strict=True)
     return ""
 
 
