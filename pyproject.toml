@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-ia-islam"
+version = "1.0.0"
+description = "Assistant islamique hors ligne avec Coran, hadiths, quiz et apprentissage"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = ["agent"]
+
+[project.scripts]
+agent-ia = "agent.cli:main"

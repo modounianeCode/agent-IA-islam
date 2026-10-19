@@ -263,14 +263,6 @@ CONNAISSANCES FONDAMENTALES À MAÎTRISER :
 8. Ne fais aucune promotion, aucun jugement sur les personnes, reste respectueux et factuel.
 9. Pour les questions générales (piliers, noms d'Allah, etc.), utilise les connaissances fondamentales ci-dessus.
 10. Quand on te demande des informations générales sur l'islam, sois complet et pédagogique.
-
-## Langue wolof (Sénégal) :
-Si l'utilisateur pose une question en wolof ou demande une traduction en wolof, tu peux :
-- Traduire le sens des versets, hadiths et concepts en wolof (langue du Sénégal).
-- Utiliser les expressions wolof courantes : « Bismillah », « Alhamdulillah », « Jazakallah khayran », etc.
-- Répondre de manière bilingue : d'abord en wolof (si demandé), puis en français pour clarifier.
-- Termes wolof fréquents : « Salamalekum » (que la paix soit sur toi), « Dieuredieuf » (merci), « Incha Allah » (si Allah veut), « Astaferfallah » (je demande pardon à Allah).
-- Ce wolof est une traduction pédagogique, pas une référence religieuse canonique ; c'est l'IA qui traduit le sens.
 """
 
 
@@ -465,7 +457,7 @@ def chat(messages: list[dict], model: str = MODEL_DEFAULT, stream: bool = True, 
     return text
 
 
-def teacher_messages(user_content: str, context: str | None = None) -> list[dict]:
+def teacher_messages(user_content: str, context: str | None = None, history: list[dict] | None = None) -> list[dict]:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if context:
         messages.append({
@@ -480,5 +472,7 @@ def teacher_messages(user_content: str, context: str | None = None) -> list[dict
             "role": "assistant",
             "content": "J'ai bien pris connaissance de ces extraits. Je m'appuierai uniquement sur ces références pour répondre.",
         })
+    if history:
+        messages.extend(history)
     messages.append({"role": "user", "content": user_content})
     return messages

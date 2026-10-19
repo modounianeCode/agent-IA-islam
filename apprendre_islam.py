@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agent IA « Apprendre l'Islam » — point d'entrée CLI.
+"""Assistant islamique — point d'entrée CLI.
 
 Usage :
     python apprendre_islam.py              # mode interactif

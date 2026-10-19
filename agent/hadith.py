@@ -34,7 +34,7 @@ def random_hadith(book: str | None = None) -> str:
         return "Aucun hadith trouvé." + (
             f" (livre « {book} » inconnu ?)" if book else ""
         )
-    return _format(row) + "\n\n(la traduction française est proposée par l'IA locale — commande : 'expliquer hadith' dans le chat)"
+    return _format(row) + "\n\n(Traduction française disponible dans la fiche du hadith.)"
 
 def search(terms: str, book: str | None = None) -> str:
     rows = db.search_hadith(terms, book=book)

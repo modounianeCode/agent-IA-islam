@@ -1,0 +1,149 @@
+Metadata-Version: 2.4
+Name: agent-ia-islam
+Version: 1.0.0
+Summary: Assistant islamique hors ligne avec Coran, hadiths, quiz et apprentissage
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: ollama>=0.3.0
+
+# Agent IA — Apprendre l'Islam
+
+Assistant islamique hors ligne, pensé pour apprendre le Coran, les hadiths et les fondements de l'islam à partir d'une base locale et d'un modèle local si disponible.
+
+> ⚠️ Outil d'apprentissage, pas une source d'autorité religieuse. Les citations sont tirées de la base locale, jamais inventées.
+
+---
+
+## Objectif du projet
+
+Le projet vise à offrir un compagnon d'étude islamique fiable, en français, avec :
+
+- lecture et recherche du Coran
+- consultation de hadiths par livre ou au hasard
+- plan d'apprentissage personnalisé
+- quiz de révision
+- réponses guidées par une base locale
+- explications pédagogiques de versets
+- services utiles en ligne : date hijri, prières, qibla, tafsir
+
+---
+
+## Fonctionnalités
+
+| Commande | Description |
+| --- | --- |
+| `coran <ref>` | Lire un verset ou une plage de versets |
+| `coran chercher "<mot>"` | Rechercher un terme dans le Coran |
+| `hadith hasard` | Hadith au hasard |
+| `hadith chercher "<mot>"` | Rechercher un thème dans les hadiths |
+| `hadith hadith <livre> <n°>` | Consulter un hadith précis |
+| `apprendre` | Voir le plan d'apprentissage |
+| `apprendre lecon <id>` | Suivre une leçon |
+| `quiz` | Générer un quiz de révision |
+| `demander <question>` | Questionner l'assistant sur le corpus local |
+| `expliquer <ref>` | Explication pédagogique d'un verset |
+| `hijri` | Date hijri et événement islamique |
+| `prieres <ville|lat lon>` | Horaires de prière |
+| `qibla <lat lon>` | Direction de la qibla |
+| `tafsir <ref>` | Tafsir abrégé |
+| `aide` / `quitter` | Aide et sortie |
+
+---
+
+## Installation
+
+Prérequis : Linux, Python 3.12+, `curl`, `zstd`.
+
+```bash
+./setup.sh
+```
+
+Le script crée un environnement virtuel, installe les dépendances, télécharge les données, construit la base SQLite locale et installe Ollama si nécessaire.
+
+### Modèle local
+
+```bash
+~/.local/lib/ollama/bin/ollama serve &
+~/.local/lib/ollama/bin/ollama pull qwen2.5:7b
+```
+
+Le modèle est optionnel : la base factuelle du projet fonctionne sans IA.
+
+---
+
+## Utilisation
+
+### Mode interactif
+
+```bash
+source .venv/bin/activate
+python apprendre_islam.py
+```
+
+### Commande unique
+
+```bash
+source .venv/bin/activate
+python apprendre_islam.py coran 2:255
+python apprendre_islam.py hadith hadith bukhari 1
+python apprendre_islam.py demander "quelle est la place de la sincérité en islam ?"
+python apprendre_islam.py quiz coran 10
+python apprendre_islam.py prieres Dakar Senegal
+python apprendre_islam.py tafsir 2:255
+```
+
+---
+
+## Architecture
+
+```text
+apprendre_islam.py      Point d'entrée CLI
+agent/
+  __init__.py           Version et package du projet
+  __main__.py           Exécution via python -m agent
+  cli.py                Interface de commandes et REPL
+  db.py                 Base SQLite + recherche FTS5
+  ingest.py             Téléchargement des données et construction de la base
+  quran.py              Lecture et recherche du Coran
+  hadith.py             Recherche et consultation des hadiths
+  llm.py                Client Ollama + prompts pédagogiques
+  api.py                API islamique externe (hijri, prière, qibla, tafsir)
+  curriculum.py         Plan d'apprentissage
+  quiz.py               Générateur de quiz
+
+data/
+  raw/                  Données sources brutes
+  agent.db              Base locale SQLite
+  progress.json         Progression de l'utilisateur
+
+setup.sh                Installation du projet
+scripts/install_ollama.sh  Installation locale d'Ollama
+requirements.txt        Dépendances Python
+pyproject.toml          Packaging Python du projet
+tests/                  Vérifications unitaires du système
+```
+
+---
+
+## Sources de données
+
+- Coran : `risan/quran-json` v3.1.2
+- Hadiths : `AhmedBaset/hadith-json` v1.2.0
+
+Les données sont téléchargées une fois puis exploitées localement depuis SQLite.
+
+---
+
+## Qualité et tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Le projet possède une suite de tests couvrant les commandes, la base SQLite, les validations et la logique de progression.
+
+---
+
+## État de production
+
+Cette version est pensée comme une base stable et claire pour un assistant islamique autonome, sans modules annexes, avec une organisation plus propre et un point d’entrée standardisé.

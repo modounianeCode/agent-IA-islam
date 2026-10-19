@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================
-#  Agent IA — Apprendre l'Islam (100 % hors-ligne)
+#  Assistant islamique — Apprendre l'Islam
 #  Installe les dépendances, télécharge les données et construit
-#  la base locale, puis installe le serveur Ollama.
+#  la base locale locale.
 # =============================================================
 set -euo pipefail
 
@@ -31,15 +31,9 @@ python -m agent.ingest --download
 echo "==> [4/5] Construction de la base locale (data/agent.db)"
 python -m agent.ingest --build
 
-echo "==> [5/5] Installation d'Ollama (sans sudo, dans ~/.local)"
-if ! "$HOME/.local/lib/ollama/bin/ollama" --version >/dev/null 2>&1; then
-    bash scripts/install_ollama.sh
-fi
-
 echo ""
 echo "=========================================="
-echo "  Installation terminée. Modèle à charger :"
-echo "    ollama pull qwen2.5:7b"
-echo "  Puis lancer l'agent :"
+echo "  Installation terminée."
+echo "  Lancer l'assistant :"
 echo "    source .venv/bin/activate && python apprendre_islam.py"
 echo "=========================================="

@@ -32,6 +32,8 @@ def format_ayah(row, with_meta: bool = True) -> str:
     lines.append(row["text_ar"])
     if row["text_fr"]:
         lines.append(f"— {row['text_fr']}")
+    if row["text_en"]:
+        lines.append(f"– {row['text_en']}")
     return "\n".join(lines)
 
 
@@ -49,14 +51,16 @@ def lire(surah: int, start: int | None = None, end: int | None = None) -> str:
         return f"Aucun verset trouvé pour la référence."
     out = [title, "=" * 60]
     if start is None:
-        out.append(f"\n1. {rows[0]['text_ar']}\n— {rows[0]['text_fr']}\n")
-        out.append(f"{len(rows)}. {rows[-1]['text_ar']}\n— {rows[-1]['text_fr']}\n")
+        out.append(f"\n1. {rows[0]['text_ar']}\n— {rows[0]['text_fr']}\n— {rows[0]['text_en']}\n")
+        out.append(f"{len(rows)}. {rows[-1]['text_ar']}\n— {rows[-1]['text_fr']}\n— {rows[-1]['text_en']}\n")
         out.append(f"(… {len(rows) - 2} versets intermédiaires — utilise 'coran {surah} {start}-{end}' pour les afficher)")
     else:
         for row in rows:
             out.append(f"{row['ayah']}. {row['text_ar']}")
             if row["text_fr"]:
                 out.append(f"   {row['text_fr']}")
+            if row["text_en"]:
+                out.append(f"   {row['text_en']}")
     return "\n".join(out)
 
 

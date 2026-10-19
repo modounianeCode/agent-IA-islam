@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import sys
 
-from agent import db, hadith, llm, quran, quiz, curriculum
+from agent import db, hadith, quran, quiz, curriculum
+
+_conversation_history: list[dict] = []
 
 HELP = """\
-━━━ Agent IA — Apprendre l'Islam (niveau intermédiaire) ━━━
+━━━ Assistant islamique — Apprendre l'Islam ━━━
+💡 La touche TAB complète automatiquement la commande en cours de frappe.
 
 📖 CORAN
   coran 2                     → sourate 2 (aperçu)
@@ -14,7 +17,6 @@ HELP = """\
   coran 18 1-10               → plage de versets
   coran chercher <terme>      → recherche dans la traduction française
   coran list                  → liste des 114 sourates
-  expliquer 2:255             → explication pédagogique du verset par l'IA
 
 🌙 HADITH
   hadith hasard               → hadith au hasard
@@ -40,19 +42,15 @@ HELP = """\
   piliers                     → les 5 piliers de l'islam
   foi                         → les 6 piliers de la foi
   prophètes                   → liste des prophètes mentionnés dans le Coran
+  histoires <nom>             → histoire d'un prophète (ex : histoires yusuf)
   sourates importantes        → les sourates majeures
 
-🇸🇳 WOLOF
-  wolof coran 1:1             → traduire le verset 1:1 en wolof
-  wolof hadith bukhari 1      → traduire le hadith bukhari n°1 en wolof
-  wolof <texte>               → traduire un texte libre en wolof
-
-🗣️ IA
-  demander <question>         → réponse appuyée sur la base locale
-  demander explique le verset du Trône
-  demander qu'est-ce que la taqwa ?
-  demander quel est le jeûne du Ramadan ?
-  demander traduis ce verset en wolof
+🌐 EN LIGNE (API — nécessite Internet)
+  hijri                       → date hijri du jour et prochain événement
+  prieres <ville> [pays]      → horaires de prière (ex : prieres Dakar Senegal)
+  prieres <lat> <lon>         → horaires de prière par coordonnées
+  qibla <lat> <lon>           → direction de la Qibla (ex : qibla 14.69 -17.44)
+  tafsir <s>[:<v>]            → tafsir Ibn Kathir d'un verset (ex : tafsir 2:255)
 
 ❌ quitter / exit
 """
@@ -86,7 +84,7 @@ def _grounding_context(question: str, limit: int = 8) -> str:
         meta = db.get_surah_meta(row["surah"])
         parts.append(
             f"[Coran {row['surah']}:{row['ayah']} — {meta['transliteration']}]\n"
-            f"{row['text_ar']}\n{row['text_fr']}"
+            f"{row['text_ar']}\n{row['text_fr']}\n{row['text_en']}"
         )
     
     # Recherche dans les hadiths
@@ -145,7 +143,7 @@ def _grounding_context(question: str, limit: int = 8) -> str:
                 meta = db.get_surah_meta(row["surah"])
                 parts.append(
                     f"[Coran {row['surah']}:{row['ayah']} — {meta['transliteration']}]\n"
-                    f"{row['text_ar']}\n{row['text_fr']}"
+                    f"{row['text_ar']}\n{row['text_fr']}\n{row['text_en']}"
                 )
         
         extra_hadith = db.search_hadith(extended_query, limit=3)
@@ -178,46 +176,6 @@ def dispatch(args: list[str], interactive: bool = False) -> str | int:
         except ValueError:
             return quran.chercher(" ".join(args[1:]))
 
-    if cmd == "expliquer":
-        if len(args) < 2:
-            return "Usage : expliquer <sourate:verset> (ex : expliquer 2:255)"
-        try:
-            surah, start, end = quran.parse_ref(" ".join(args[1:]))
-        except ValueError:
-            return "Référence incomprise. Exemple : expliquer 2:255"
-        meta = db.get_surah_meta(surah)
-        if not meta:
-            return f"Sourate {surah} introuvable."
-        rows = db.get_ayah_range(surah, max(1, start - 2), min(meta["total_verses"], end + 2))
-        ctx_lines = []
-        for row in rows:
-            marker = "" if row["ayah"] == start else " "
-            ctx_lines.append(
-                f"[v{row['ayah']}]{marker} {row['text_ar']}\n   {row['text_fr']}"
-            )
-        context = "\n".join(ctx_lines)
-        if not llm.is_available():
-            return (
-                "Ollama (modèle qwen2.5:7b) n'est pas lancé. Lance d'abord le serveur "
-                "(voir setup.sh), puis réessaie. Voici le verset sans explication :\n"
-                + quran.lire(surah, start, end)
-            )
-        print(
-            f"🤖 Explication du verset Coran {surah}:{start} — "
-            f"{meta['transliteration']} (l'IA génère, ça peut prendre un moment)…\n"
-        )
-        prompt = (
-            f"Explique-moi pédagogiquement le verset Coran {surah}:{start} pour un étudiant de niveau intermédiaire :\n"
-            "1) sens du verset, 2) contexte (si connu), 3) 2–3 leçons pratiques, 4) références croisées Coran/Sunna solides.\n"
-            "RÈGLE ABSOLUE : ne cite que le verset {surah}:{start} fourni ci-dessous. "
-            "Tu ne dois JAMAIS écrire un nom de livre ni un numéro de hadith (ex. « Bukhari n°6648 »). "
-            "À la place de tout hadith, écris exactement : « hadith authentique (référence à vérifier) ». "
-            "Réponds en français."
-        )
-        msgs = llm.teacher_messages(prompt, context)
-        llm.chat(msgs, strict=True)
-        return ""
-
     # ── HADITH ─────────────────────────────────────────────
     if cmd == "hadith":
         if len(args) < 2:
@@ -229,19 +187,7 @@ def dispatch(args: list[str], interactive: bool = False) -> str | int:
             book = resolve_book_input(args[2]) if len(args) > 2 else None
             if len(args) > 2 and book is None:
                 return f"Livre inconnu : « {args[2]} ». Voir 'hadith livres'."
-            res = hadith.random_hadith(book)
-            if interactive:
-                print(res)
-                a = input("\nVeux-tu une explication/traduction en français (f), en wolof (w) ou rien (n) ? ").strip().lower()
-                row = db.random_hadith(book)
-                if a in ("o", "oui", "f", "fr"):
-                    return _explain_hadith_from_row(row)
-                if a in ("w", "wolof"):
-                    return _translate_to_wolof(
-                        f"Narrateur : {row['narrator_en'] or '?'}\n{row['text_en']}\n{row['arabic'] or ''}",
-                        f"Hadith — {row['book_name']} n°{row['hadith_number']}",
-                    )
-            return res
+            return hadith.random_hadith(book)
         if sub == "chercher":
             if len(args) < 3:
                 return "Usage : hadith chercher <terme> [livre <slug>]"
@@ -267,15 +213,10 @@ def dispatch(args: list[str], interactive: bool = False) -> str | int:
             res = hadith.lookup(book, n)
             if interactive:
                 print(res)
-                a = input("\nVeux-tu une explication/traduction en français (f), en wolof (w) ou rien (n) ? ").strip().lower()
+                a = input("\nVeux-tu une explication/traduction en français (f) ou rien (n) ? ").strip().lower()
                 row = db.get_hadith(book, n)
                 if a in ("o", "oui", "f", "fr") and row:
                     return _explain_hadith_from_row(row)
-                if a in ("w", "wolof") and row:
-                    return _translate_to_wolof(
-                        f"Narrateur : {row['narrator_en'] or '?'}\n{row['text_en']}\n{row['arabic'] or ''}",
-                        f"Hadith — {row['book_name']} n°{row['hadith_number']}",
-                    )
             return res
         if sub == "livre":
             if len(args) < 3:
@@ -351,19 +292,21 @@ def dispatch(args: list[str], interactive: bool = False) -> str | int:
     if cmd == "prophètes" or cmd == "prophetes":
         return _list_prophets()
     
+    if cmd in ("histoires", "histoire", "récits", "recits", "stories"):
+        return _stories_dispatch(args[1:])
+    
     if cmd == "sourates" or cmd == "sourates importantes":
         return _list_important_surahs()
-    
-    # ── WOLOF (traductions IA) ──────────────────────────────
-    if cmd == "wolof":
-        return _wolof_dispatch(args[1:])
-    
-    # ── DEMANDER (IA) ──────────────────────────────────────
-    if cmd in ("demander", "demande", "ask"):
-        if len(args) < 2:
-            return "Usage : demander <votre question> (ex : demander qu'est-ce que la taqwa ?)"
-        question = " ".join(args[1:])
-        return ask_llm(question)
+
+    # ── EN LIGNE (API islamiques) ──────────────────────────
+    if cmd == "hijri":
+        return _hijri()
+    if cmd in ("prieres", "prière", "priere"):
+        return _prayer_times(args[1:])
+    if cmd == "qibla":
+        return _qibla(args[1:])
+    if cmd == "tafsir":
+        return _tafsir(args[1:])
 
     if cmd in ("aide", "help", "?"):
         return HELP
@@ -403,25 +346,6 @@ def _run_quiz(kind: str, n: int) -> str:
         print("Bon résultat. Relis les leçons 'apprendre' et retente.")
     else:
         print("Continue ! Suis le plan 'apprendre' puis refais ce quiz.")
-    return ""
-
-
-def _explain_hadith_from_row(row) -> str:
-    if not llm.is_available():
-        return (
-            "\n(Ollama n'est pas lancé — impossible de traduire maintenant. "
-            "Lance le serveur puis tape 'demander explique ce hadith'.)"
-        )
-    print("\n🤖 Traduction/Explication en français (IA locale)…\n")
-    context = (
-        f"[Hadith — {row['book_name']} n°{row['hadith_number']}]\n"
-        f"Narrateur : {row['narrator_en'] or '?'}\n{row['arabic'] or ''}\n{row['text_en']}"
-    )
-    prompt = (
-        "Traduis en français ce hadith de façon fidèle puis, en 3 points, ce qu'on en retient "
-        "pratiquement pour aujourd'hui. Cite le livre et le n°."
-    )
-    llm.chat(llm.teacher_messages(prompt, context), strict=True)
     return ""
 
 
@@ -690,6 +614,520 @@ def _list_prophets() -> str:
     return "\n".join(out)
 
 
+# ── HISTOIRES DES PROPHÈTES ───────────────────────────────────────
+PROPHET_STORIES = {
+    "adam": {
+        "name": "Adam",
+        "title": "Le premier homme et le premier prophète",
+        "story": (
+            "Adam est le premier être humain et le premier prophète. Allah le créa de terre, l'honora en "
+            "lui enseignant les noms de toutes choses (2:31), et lui demanda de prostrer les anges par respect "
+            "pour lui. Adam et sa femme vécurent au Paradis, jusqu'à ce que Satan les tente et qu'ils "
+            "mangent de l'arbre interdit (2:36). Ils se repentirent aussitôt : « Notre Seigneur, nous avons fait "
+            "du tort à nous-mêmes… » (7:23) et Allah accepta leur repentir. Adam est le père de l'humanité et "
+            "l'exemple du repentir sincère : l'homme est faillible, mais la miséricorde d'Allah est plus grande "
+            "que toute faute."
+        ),
+        "verses": [
+            ("2:31", "Allah enseigna à Adam les noms de toutes choses"),
+            ("2:36", "Satan les fit sortir du Paradis : il est l'ennemi déclaré de l'homme"),
+            ("7:23", "Adam et sa femme se repentent : « …Si Tu ne nous pardonnes pas… nous serons perdants »"),
+        ],
+        "lesson": "Quelle que soit la faute, le repentir sincère vers Allah est toujours accepté.",
+    },
+    "idris": {
+        "name": "Idris (Énoch)",
+        "title": "Le prophète élevé en haut lieu",
+        "story": (
+            "Idris est un prophète ancien, ancêtre de Nuh (Noé). Allah le loue dans le Coran comme « un homme "
+            "véridique et un prophète » (19:56). Il est connu pour sa persévérance et sa patience. Le Coran "
+            "dit qu'Allah « l'éleva en un lieu très haut » (19:57) : une marque d'honneur et de proximité avec "
+            "Allah. On rapporte qu'il fut le premier à écrire avec le calame et à coudre des vêtements."
+        ),
+        "verses": [
+            ("19:56", "Idris était un véridique et un prophète"),
+            ("19:57", "Allah l'éleva en un lieu très haut"),
+            ("21:85", "Il fut parmi les endurants"),
+        ],
+        "lesson": "La véracité et la persévérance élèvent le serviteur auprès d'Allah.",
+    },
+    "nuh": {
+        "name": "Nuh (Noé)",
+        "title": "La patience dans l'appel, neuf cent cinquante ans",
+        "story": (
+            "Nuh fut envoyé à un peuple qui adorait des idoles. Il les appela à l'unicité d'Allah pendant neuf "
+            "cent cinquante ans (29:14), mais seuls quelques-uns crurent. Il construisit l'arche sur ordre "
+            "d'Allah, malgré les moqueries des mécréants. Quand le déluge vint, il embarqua les croyants et un "
+            "couple de chaque espèce (11:40). Son fils, qui s'était écarté de la foi, refusa et périt (11:42-43). "
+            "Le récit de Nuh est une leçon immense de patience et de certitude : le secours d'Allah vient "
+            "toujours, même quand tout semble perdu."
+        ),
+        "verses": [
+            ("29:14", "Nuh demeura parmi son peuple neuf cent cinquante ans"),
+            ("11:40", "Embarquèrent seulement ceux qui avaient cru"),
+            ("71:1", "Nous avons envoyé Nuh à son peuple : avertis-les avant qu'un châtiment douloureux ne les frappe"),
+        ],
+        "lesson": "La patience dans l'appel, même face au rejet, est la voie des prophètes.",
+    },
+    "hud": {
+        "name": "Hud (Héber)",
+        "title": "Envoyé aux 'Ad, peuple des colonnes",
+        "story": (
+            "Hud fut envoyé au peuple des 'Ad, qui habitait de vastes demeures et adorait des idoles. Il les "
+            "appela à adorer Allah seul et refusa tout salaire pour cela (11:51). Les 'Ad, pleins d'orgueil "
+            "pour leur puissance, le traitèrent de menteur et le raillèrent. Malgré ses avertissements, ils "
+            "persistèrent dans l'erreur et furent détruits par un vent glacial. Allah sauva Hud et ceux qui "
+            "avaient cru avec lui (11:58)."
+        ),
+        "verses": [
+            ("7:65", "Nous avons envoyé Hud aux 'Ad, leur frère : Adorez Allah, vous n'avez point de divinité en dehors de Lui"),
+            ("11:50", "Hud appela son peuple à l'unicité d'Allah"),
+            ("11:58", "Notre ordre vint : Nous sauvâmes Hud et ceux qui crurent avec lui"),
+        ],
+        "lesson": "L'orgueil et la puissance matérielle ne protègent jamais de la justice d'Allah.",
+    },
+    "salih": {
+        "name": "Salih (Salé)",
+        "title": "Envoyé aux Thamud, peuple du rocher",
+        "story": (
+            "Salih fut envoyé aux Thamud, un peuple qui sculptait des maisons dans la roche. Il les appela à "
+            "adorer Allah seul. Comme signe, Allah leur donna la chamelle et leur demanda de la laisser boire "
+            "et de ne pas lui faire de mal (7:73). Mais ils tuèrent la chamelle et défièrent Salih. Le châtiment "
+            "les frappa par un grand cri, et Allah sauva Salih et les croyants. Le récit montre que les signes "
+            "d'Allah exigent la foi et non le défi."
+        ),
+        "verses": [
+            ("7:73", "Voici la chamelle d'Allah, signe pour vous : laissez-la paître, ne lui faites pas de mal"),
+            ("11:61", "Salih appela son peuple à Lui demander pardon et à se repentir"),
+            ("11:68", "Les Thamud furent détruits pour avoir démenti les signes de leur Seigneur"),
+        ],
+        "lesson": "Les signes d'Allah demandent humilité et obéissance, jamais provocation.",
+    },
+    "ibrahim": {
+        "name": "Ibrahim (Abraham)",
+        "title": "Le père des prophètes, l'ami intime d'Allah",
+        "story": (
+            "Ibrahim est l'ami intime d'Allah (Khalilullah) et le père spirituel des prophètes. Jeune, il "
+            "chercha son Seigneur par le raisonnement et invita son peuple à l'unicité. Il brisa les idoles "
+            "que son peuple adorait (21:51-57) et fut jeté dans le feu, qui devint pour lui paix et fraîcheur "
+            "(21:69). Il émigra avec sa famille, laissa Ismaïl et Hajar dans la vallée de Bakkah (future La "
+            "Mecque), où Allah fit jaillir la source de Zamzam. Eprouvé par l'ordre de sacrifier son fils, "
+            "son obéissance totale fut récompensée par un grand sacrifice (37:102-107). Avec Ismaïl, il "
+            "construisit la Kaaba (2:127). Le Coran en fait le modèle de la soumission pure."
+        ),
+        "verses": [
+            ("21:51", "Nous avions auparavant donné à Ibrahim la bonne direction"),
+            ("21:69", "Ô feu, sois pour Ibrahim un fraîcheur et une paix"),
+            ("37:102", "Je me suis vu en songe sacrifiant tout en te soumettant à l'épreuve : Observe ce que tu en penses"),
+            ("2:127", "Ibrahim et Ismaïl élevèrent les fondements de la Maison"),
+        ],
+        "lesson": "La soumission totale à Allah, même dans l'épreuve la plus dure, est la foi véritable.",
+    },
+    "lut": {
+        "name": "Lut (Lot)",
+        "title": "Envoyé à un peuple perverti",
+        "story": (
+            "Lut, neveu d'Ibrahim, fut envoyé à un peuple qui commit un péché abominable : les hommes "
+            "s'approchaient des hommes au lieu des femmes (7:80-81). Il les appela à la pureté, mais ils "
+            "le menacèrent d'expulsion et vinrent même vers ses hôtes (les anges). Ceux-ci se révélèrent et "
+            "annoncèrent le châtiment. Allah sauva Lut et sa famille, sauf sa femme qui partageait le rejet. "
+            "Le peuple de Lut fut renversé : une leçon sur l'abandon des interdits d'Allah."
+        ),
+        "verses": [
+            ("7:80", "Vous approchez-vous des hommes au lieu des femmes ? Vous êtes un peuple transgresseur"),
+            ("11:77", "Les envoyés arrivèrent chez Lut, qui en fut effrayé"),
+            ("7:84", "Nous fîmes pleuvoir sur eux une pluie : vois la fin des criminels"),
+        ],
+        "lesson": "La pureté et la pudeur sont des valeurs qu'on ne sacrifie jamais.",
+    },
+    "ismail": {
+        "name": "Ismaïl (Ismaël)",
+        "title": "Le fils du sacrifice et le bâtisseur de la Kaaba",
+        "story": (
+            "Ismaïl, fils d'Ibrahim et de Hajar, grandit dans la vallée de La Mecque. Il est connu pour sa "
+            "droiture et sa patience. Lorsque son père lui fit part du songe lui demandant de le sacrifier, il "
+            "répondit avec une obéissance admirable : « Ô mon père, fais ce qui t'est commandé ; tu me "
+            "trouveras patient, s'il plaît à Allah » (37:102). Sa soumission fut le fondement de l'Aïd al-Adha. "
+            "Avec son père, il construisit la Kaaba, et Allah le loue dans le Coran comme « d'une promesse "
+            "véridique » (19:54)."
+        ),
+        "verses": [
+            ("37:102", "Ô mon père, fais ce qui t'est commandé : tu me trouveras patient"),
+            ("2:125", "Nous fîmes de la Maison un lieu de rassemblement pour les gens"),
+            ("19:54", "Ismaïl était d'une promesse véridique, et il fut un messager et un prophète"),
+        ],
+        "lesson": "L'obéissance confiante à Allah, même dans l'épreuve, élève le serviteur.",
+    },
+    "ishaq": {
+        "name": "Ishaq (Isaac)",
+        "title": "Le fils promis de la miséricorde",
+        "story": (
+            "Ishaq est le fils d'Ibrahim et de Sarah, dont la naissance fut annoncée comme une bonne nouvelle "
+            "en dépit de leur vieillesse (11:71 ; 51:29-30). Il est le père de Yaqub (Jacob) et l'ancêtre de "
+            "nombreux prophètes. Allah le bénit ainsi que sa descendance, et le Coran le cite parmi les "
+            "prophètes élus et guidés (6:84). Son histoire rappelle que rien n'est impossible à Allah."
+        ),
+        "verses": [
+            ("11:71", "Sa femme rit, et Nous lui annonçâmes la bonne nouvelle d'Ishaq, et après lui de Yaqub"),
+            ("19:49", "Nous lui fîmes don d'Ishaq et de Yaqub, et nous en fîmes tous deux des prophètes"),
+            ("6:84", "Nous lui donnâmes Ishaq et Yaqub : Nous les guidâmes tous"),
+        ],
+        "lesson": "Les promesses d'Allah s'accomplissent, même lorsque tout paraît impossible.",
+    },
+    "yaqub": {
+        "name": "Yaqub (Jacob)",
+        "title": "Le père patient des douze tribus",
+        "story": (
+            "Yaqub, fils d'Ishaq et père de Yusuf, est un prophète patient. Il subit la perte de son fils bien-"
+            "aimé Yusuf avec une dignité profonde : « Belle patience ! Allah est mon secours contre ce que "
+            "vous avancez » (12:18). Il refusa de désespérer et garda confiance en Allah pendant de longues "
+            "années. Allah lui rendit finalement Yusuf et le consola (12:96). Sur son lit, il recommanda à ses "
+            "fils la religion de leurs pères : la soumission à Allah, seul (2:132)."
+        ),
+        "verses": [
+            ("12:18", "Belle patience ! Allah est mon secours contre ce que vous avancez"),
+            ("12:96", "L'annonceur arriva avec la tunique de Yusuf : la vue de Yaqub revint"),
+            ("2:132", "Yaqub recommanda à ses fils : ô mes fils, Allah a choisi pour vous la religion"),
+        ],
+        "lesson": "La patience dans l'épreuve et la confiance en Allah portent toujours leurs fruits.",
+    },
+    "yusuf": {
+        "name": "Yusuf (Joseph)",
+        "title": "De la fosse au trône d'Égypte",
+        "story": (
+            "Yusuf fut jeté par ses frères, par jalousie, dans le fond d'un puits (12:10), puis vendu en Égypte "
+            "où il grandit dans la maison d'un notable. Il refusa la tentation avec piété et fut injustement "
+            "emprisonné. En prison, il interpréta les rêves et sa droiture fut reconnue. Appelé auprès du roi, "
+            "il expliqua le songe des sept vaches (12:43-49) et devint intendant des greniers d'Égypte. Des "
+            "années plus tard, ses frères vinrent et se reconnurent ; Yusuf leur pardonna avec noblesse "
+            "(12:92). La sourate Yusuf (12) est appelée « la plus belle des histoires » (12:3)."
+        ),
+        "verses": [
+            ("12:10", "Jetez-le dans le fond du puits : le recueilleront des voyageurs"),
+            ("12:92", "Point de reproche pour vous aujourd'hui : Allah vous pardonne"),
+            ("12:3", "Nous te racontons la plus belle des histoires par ce que Nous te révélons"),
+        ],
+        "lesson": "La pureté, la patience et le pardon transforment les plus dures épreuves en victoires.",
+    },
+    "ayyub": {
+        "name": "Ayyub (Job)",
+        "title": "L'exemple parfait de la patience dans la maladie",
+        "story": (
+            "Ayyub fut comblé de biens, d'enfants et de santé, puis éprouvé par la perte de tout cela et une "
+            "longue maladie. Il ne cessa jamais d'invoquer Allah et garda une patience exemplaire. Il dit : "
+            "« Le mal m'a touché, et Tu es le plus miséricordieux des miséricordieux » (21:83). Allah lui "
+            "répondit, lui rendit la santé et lui rendit sa famille en plus grand nombre (21:84). La légende "
+            "pousserait à se plaindre ; Ayyub est la preuve que l'épreuve est une école de foi."
+        ),
+        "verses": [
+            ("21:83", "Le mal m'a touché, et Tu es le plus miséricordieux des miséricordieux"),
+            ("21:84", "Nous lui répondîmes, écartâmes le mal et lui rendîmes sa famille"),
+            ("38:41", "Rappelle-toi Ayyub, qui invoqua son Seigneur : le diable m'a touché de peine et de tourment"),
+        ],
+        "lesson": "Dans la douleur comme dans l'aisance, on glorifie et invoque Allah, jamais on ne désespère.",
+    },
+    "shuayb": {
+        "name": "Shuayb (Jethro)",
+        "title": "Le défenseur de l'équité dans le commerce",
+        "story": (
+            "Shuayb fut envoyé au peuple de Madian, qui tricheait dans les poids et mesures et dépouillait les "
+            "gens. Il leur ordonna la justice, l'équité dans le commerce et l'adoration d'Allah seul (11:84-85). "
+            "Rebuté, il fut menacé d'expulsion. Allah détruisit les mécréants par le tremblement et sauva "
+            "Shuayb et les croyants. C'est le prophète patron de l'honnêteté commerciale, une leçon toujours "
+            "actuelle."
+        ),
+        "verses": [
+            ("7:85", "Remplissez la mesure et le poids avec équité, ne frustrez pas les gens de leurs biens"),
+            ("11:84", "Nous envoyâmes Shuayb aux Madian, leur frère : adorez Allah, vous n'avez point de divinité en dehors de Lui"),
+            ("7:87", "Si une partie de vous a cru au message et l'autre non, patientez jusqu'à ce qu'Allah juge"),
+        ],
+        "lesson": "L'argent et le commerce doivent être purs, honnêtes et justes envers tous.",
+    },
+    "musa": {
+        "name": "Musa (Moïse)",
+        "title": "Le prophète à qui Allah parla, sauveur de son peuple",
+        "story": (
+            "Musa est appelé Kalimullah, « celui à qui Allah parla ». Né sous le règne du Pharaon qui tuait les "
+            "garçons hébreux, il fut placé dans un coffret jeté sur le Nil et recueilli, par la volonté d'Allah, "
+            "dans la maison du Pharaon (28:4-8). Devenu adulte, Allah lui parla au mont Sinay (le Tur) et lui "
+            "donna la Thora (7:143-145). Il affronta Pharaon avec son frère Harun, fit traverser la mer à son "
+            "peuple par la puissance d'Allah, et reçut les tables de la Loi. Mais son peuple se mit à adorer le "
+            "veau en son absence (7:148). Musa reste le symbole de la fermeté face au tyran et de la douceur "
+            "envers son peuple."
+        ),
+        "verses": [
+            ("28:4", "Pharaon s'éleva dans le pays et sema la division parmi ses habitants"),
+            ("28:7", "Nous inspirâmes à la mère de Musa : allaitez-le, et quand tu craindras, jette-le dans le fleuve"),
+            ("7:143", "Musa vint au rendez-vous, et son Seigneur lui parla"),
+            ("4:164", "Allah parla à Musa directement"),
+        ],
+        "lesson": "La vérité, portée avec foi, triomphe des tyrans les plus puissants.",
+    },
+    "harun": {
+        "name": "Harun (Aaron)",
+        "title": "Le frère et soutien de Musa",
+        "story": (
+            "Harun fut le frère de Musa et son soutien dans la mission. Allah exauça la prière de Musa qui "
+            "demandait son frère comme appui (20:29-32). Harun l'accompagna auprès du Pharaon et partagea "
+            "la difficile conduite du peuple d'Israël. Quand une partie du peuple adora le veau, Harun les "
+            "avertit et les dissuada (20:90), mais ils n'écoutèrent pas. Le Coran le cite parmi les prophètes "
+            "élus (19:53)."
+        ),
+        "verses": [
+            ("20:92", "Musa dit à Harun : qu'est-ce qui t'a empêché, quand tu les as vus s'égarer, de me suivre ?"),
+            ("19:53", "Nous lui fîmes don de son frère Harun, de par Notre miséricorde"),
+            ("7:142", "Nous donnâmes à Musa ses rendez-vous, et Nous lui désignâmes son frère Harun comme soutien"),
+        ],
+        "lesson": "La solidarité fraternelle dans le bien est un pilier de la mission.",
+    },
+    "dawud": {
+        "name": "Dawud (David)",
+        "title": "Le roi-prophète au jugement juste",
+        "story": (
+            "Dawud tua Goliath (Jalut) avec la permission d'Allah, et Allah lui donna la royauté et la sagesse "
+            "(2:251). Il reçut le Zabur (Psaumes), et la montagne comme les oiseaux glorifiaient Allah avec lui "
+            "(21:79). Prophète-roi, il fut éprouvé par une affaire de deux plaideurs et se repentit (38:21-25). "
+            "Allah lui ordonna de juger avec équité et de ne pas suivre la passion (38:26). Dawud montre que la "
+            "force et le pouvoir doivent être au service de la justice."
+        ),
+        "verses": [
+            ("2:251", "Allah donna à Dawud la royauté et la sagesse, et Lui enseigna ce qu'Il voulut"),
+            ("38:26", "Ô Dawud, Nous t'avons fait calife sur la terre : juge donc en toute équité"),
+            ("21:79", "Nous soumîmes les montagnes et les oiseaux qui glorifiaient avec lui"),
+        ],
+        "lesson": "Le pouvoir est une charge qui exige justice, humilité et repentir.",
+    },
+    "sulayman": {
+        "name": "Sulayman (Salomon)",
+        "title": "Le roi auquel Allah soumit les djinns et le vent",
+        "story": (
+            "Sulayman, fils de Dawud, reçut d'Allah un royaume sans égal : le vent, les djinns et le langage "
+            "des oiseaux furent soumis à son service (27:15-17). Il jugea avec sagesse, comme le montre "
+            "l'histoire de la reine de Saba (Bilqis), qu'il invita à adorer Allah seul et qui s'y soumit "
+            "(27:38-44). Sa lettre commençait par la basmala, « Au nom d'Allah, le Tout Miséricordieux, le Très "
+            "Miséricordieux » (27:30). Le prophète souligna que les bienfaits d'Allah appellent la gratitude "
+            ": « Ceci est une faveur de mon Seigneur pour m'éprouver » (27:40)."
+        ),
+        "verses": [
+            ("27:15", "Nous donnâmes à Dawud et à Sulayman la science, et ils dirent : louange à Allah"),
+            ("27:30", "Elle vient de Sulayman : Au nom d'Allah, le Tout Miséricordieux, le Très Miséricordieux"),
+            ("27:40", "Ceci est une faveur de mon Seigneur pour m'éprouver : serai-je reconnaissant ou ingrat ?"),
+        ],
+        "lesson": "La puissance et les dons sont une épreuve : on les met au service d'Allah, avec gratitude.",
+    },
+    "ilyas": {
+        "name": "Ilyas (Élie)",
+        "title": "Le défenseur du monothéisme",
+        "story": (
+            "Ilyas fut envoyé au peuple d'Israël qui adorait l'idole Baal. Il les appela à craindre Allah et à "
+            "abandonner cette fausse divinité (37:124-126). Le Coran le loue et lui rend hommage : « Que la paix "
+            "soit sur Ilyas » (37:130). Comme beaucoup de prophètes, il fut démenti par la majorité de son "
+            "peuple, mais sa mission rappelle que le tawhid ne supporte aucun compromis. Il est cité avec "
+            "Zakariya et Yahya parmi les plus pieux (6:85)."
+        ),
+        "verses": [
+            ("37:123", "Ilyas fut, lui aussi, du nombre des envoyés"),
+            ("37:130", "Que la paix soit sur Ilyas"),
+            ("6:85", "Zakariya, Yahya, Isa et Ilyas furent tous du nombre des vertueux"),
+        ],
+        "lesson": "Le monothéisme se défend sans compromis, avec douceur et constance.",
+    },
+    "al_yasa": {
+        "name": "Al-Yasa (Élisée)",
+        "title": "Le successeur du message",
+        "story": (
+            "Al-Yasa (Élisée) est cité dans le Coran parmi les prophètes élus, aux côtés d'Ismaïl, d'Ilyas et "
+            "de Dhul-Kifl, comme un homme du nombre des meilleurs (38:48). Peu d'éléments de son récit sont "
+            "détaillés dans le Coran, mais sa mention enseigne que le message prophétique se transmet de "
+            "génération en génération, avec la même mission : rappeler l'adoration d'Allah seul."
+        ),
+        "verses": [
+            ("38:48", "Rappelle-toi Al-Yasa et Dhul-Kifl : tous sont du nombre des meilleurs"),
+            ("6:86", "Ismaïl, Al-Yasa, Yunus et Lut : Nous les préférâmes aux mondes"),
+        ],
+        "lesson": "Chaque génération a besoin d'un rappel, et chacun peut porter la lumière.",
+    },
+    "yunus": {
+        "name": "Yunus (Jonas)",
+        "title": "L'invocation dans l'obscurité de la mer",
+        "story": (
+            "Yunus fut envoyé à son peuple, qui ne crut qu'au moment où le châtiment était imminent et fut ainsi "
+            "épargné (10:98). Las, il partit sans attendre l'ordre d'Allah et fut englouti par une grande baleine "
+            "(37:140-142). Dans les ténèbres, il invoqua : « Point de divinité à part Toi ! Gloire à Toi ! J'étais "
+            "parmi les injustes » (21:87). Allah exauça son invocation et le fit sortir (21:88). Cette invocation "
+            "est devenue une grande invocation du pardon."
+        ),
+        "verses": [
+            ("21:87", "Point de divinité à part Toi ! Gloire à Toi ! J'étais parmi les injustes"),
+            ("21:88", "Nous lui répondîmes et le sauvâmes de l'anxiété"),
+            ("10:98", "Y a-t-il une cité qui crut au moment fatal et tira profit de sa foi, sinon le peuple de Yunus ?"),
+        ],
+        "lesson": "La sincérité de l'invocation, même au fond de la détresse, fait descendre le secours d'Allah.",
+    },
+    "zakariya": {
+        "name": "Zakariya (Zacharie)",
+        "title": "L'invocation d'un cœur pour un enfant",
+        "story": (
+            "Zakariya, chargé de la garde de Maryam auprès de laquelle il voyait des dons d'Allah (3:37), "
+            "demanda à son Seigneur, en secret et avec ferveur, un enfant qui poursuivrait le message (3:38 ; "
+            "19:2-6). Allah lui annonça la naissance de Yahya, alors que lui et sa femme étaient vieux (19:7-9). "
+            "Les anges lui dirent : « Allah t'annonce la bonne nouvelle de Yahya, qui confirmera une parole "
+            "d'Allah » (3:39). L'histoire de Zakariya est la preuve que la prière sincère transforme l'impossible."
+        ),
+        "verses": [
+            ("3:37", "Chaque fois que Zakariya entrait auprès de Maryam, il trouvait chez elle une nourriture"),
+            ("3:39", "Allah t'annonce la bonne nouvelle de Yahya, qui confirmera une parole d'Allah"),
+            ("19:2", "C'est le récit de la miséricorde de ton Seigneur envers Son serviteur Zakariya"),
+        ],
+        "lesson": "Nul ne doit désespérer de la miséricorde d'Allah : Sa réponse peut venir à tout âge.",
+    },
+    "yahya": {
+        "name": "Yahya (Jean-Baptiste)",
+        "title": "Le prophète de la pureté",
+        "story": (
+            "Yahya naquit par un don d'Allah à Zakariya, et Allah le dota dès l'enfance de sagesse et de "
+            "jugement (19:12). Il incarnait la chasteté, la pureté et la piété, et Allah l'éleva au rang des "
+            "meilleurs : « Et un être pur, pieux et tendre, qui craignait Allah » (19:13-14). Il annonça et "
+            "prépara la venue du Messager 'Isa. Sa vie courte fut marquée par le courage de dire la vérité "
+            "jusqu'au bout. Dieu lui donne la paix : « La paix était sur lui le jour de sa naissance, de sa mort "
+            "et le jour où il sera ressuscité vivant » (19:15)."
+        ),
+        "verses": [
+            ("19:12", "Ô Yahya, tiens fermement le Livre ! Nous lui donnâmes la sagesse dès l'enfance"),
+            ("3:39", "Il sera noble et chaste et prophète parmi les vertueux"),
+            ("19:15", "Que la paix soit sur lui le jour de sa naissance, de sa mort et de sa résurrection"),
+        ],
+        "lesson": "La pureté et le courage de la vérité sont des héritages précieux transmis aux nouvelles générations.",
+    },
+    "isa": {
+        "name": "'Isa (Jésus)",
+        "title": "Le serviteur et messager d'Allah, né de Maryam",
+        "story": (
+            "'Isa, fils de Maryam, naquit miraculeusement sans père, par la volonté d'Allah (3:45-47 ; 19:20-21). "
+            "Il parla au berceau pour défendre sa mère pieuse (19:29-33) et reçut l'Évangile. Par la permission "
+            "d'Allah, il ressuscitait les morts, guérissait le lépreux et l'aveugle, et créait un oiseau d'argile "
+            "(3:49). Il n'est pas une divinité, mais un serviteur d'Allah (43:59). Allah le mit à l'abri des "
+            "machinations et l'éleva vers Lui (4:157-158) ; l'islam attend son retour à la fin des temps. "
+            "Croyant en 'Isa, c'est croire à la puissance d'Allah et à Son unicité."
+        ),
+        "verses": [
+            ("3:45", "Les anges dirent : ô Marie, Allah t'annonce un Verbe de Sa part : nommé le Messie, 'Isa, fils de Marie"),
+            ("3:49", "Je crée pour vous, d'argile, une forme d'oiseau ; j'y souffle et elle devient oiseau par la permission d'Allah"),
+            ("43:59", "'Isa n'est qu'un serviteur que Nous avons comblé de grâces"),
+            ("4:157", "Ils ne l'ont ni tué ni crucifié, mais cela leur fit voir une apparence"),
+        ],
+        "lesson": "Les miracles sont la preuve de la puissance d'Allah, jamais une raison d'adorer autrui que Lui.",
+    },
+    "dhul_kifl": {
+        "name": "Dhul-Kifl (Ézéchiel)",
+        "title": "Le serviteur endurant",
+        "story": (
+            "Dhul-Kifl est cité dans le Coran parmi les prophètes doués d'endurance et élevés en dignité, "
+            "aux côtés d'Ayyub et d'Ismaïl (38:48 ; 21:85). Son nom signifie « celui qui a reçu une part "
+            "doublée » de récompense. Peu de détails sont donnés dans le Coran, mais sa mention enseigne la "
+            "constance dans le service d'Allah. Il rappelle que la piété ne se mesure pas à la célébrité mais "
+            "à l'endurance."
+        ),
+        "verses": [
+            ("21:85", "Ismaïl, Idris et Dhul-Kifl furent tous des endurants"),
+            ("38:48", "Rappelle-toi Al-Yasa et Dhul-Kifl : tous sont du nombre des meilleurs"),
+        ],
+        "lesson": "La constance discrète dans l'obéissance est pleinement récompensée par Allah.",
+    },
+    "muhammad": {
+        "name": "Muhammad ﷺ",
+        "title": "Le sceau des prophètes, miséricorde pour l'univers",
+        "story": (
+            "Muhammad ﷺ est le dernier des prophètes et des messagers (33:40). Il fut envoyé à toute l'humanité, "
+            "alors que les prophètes précédents étaient envoyés à leur peuple et leur époque. Il reçut le Coran, "
+            "le miracle permanent et préservé, et Allah lui dit : « Nous ne t'avons envoyé que comme miséricorde "
+            "pour l'univers » (21:107). Il est le modèle parfait : véridique, digne de confiance, d'une immense "
+            "bonté. Croire en lui engage à l'aimer, à suivre sa Sunna et à le défendre avec douceur et sagesse. "
+            "Il demeure l'exemple suprême à imiter dans toutes les dimensions de la vie."
+        ),
+        "verses": [
+            ("33:40", "Muhammad n'est le père d'aucun de vos hommes, mais le messager d'Allah et le sceau des prophètes"),
+            ("21:107", "Nous ne t'avons envoyé que comme miséricorde pour l'univers"),
+            ("2:285", "Le Messager a cru en ce qu'on a fait descendre vers lui, et les croyants aussi"),
+            ("68:4", "Tu es d'une moralité éminente"),
+        ],
+        "lesson": "Aimer et suivre Muhammad ﷺ, c'est le prendre pour modèle en tout, jusqu'au retour d'Allah.",
+    },
+}
+
+PROPHET_STORY_ALIASES = {
+    "noe": "nuh", "noah": "nuh", "abraham": "ibrahim", "abrahim": "ibrahim",
+    "lot": "lut", "ismael": "ismail", "isaac": "ishaq", "jacob": "yaqub",
+    "joseph": "yusuf", "job": "ayyub", "jethro": "shuayb", "shuayb": "shuayb",
+    "moise": "musa", "moses": "musa", "aaron": "harun", "haroun": "harun",
+    "david": "dawud", "salomon": "sulayman", "souleymane": "sulayman", "sulaiman": "sulayman",
+    "elie": "ilyas", "ilyes": "ilyas", "elisee": "al_yasa", "yasa": "al_yasa",
+    "jonas": "yunus", "zacharie": "zakariya", "zakaria": "zakariya",
+    "jean-baptiste": "yahya", "jean baptiste": "yahya", "yahia": "yahya",
+    "jesus": "isa", "issa": "isa", "issah": "isa", "ezechiel": "dhul_kifl",
+    "adam": "adam", "idris": "idris", "hud": "hud", "salih": "salih", "lut": "lut",
+    "yusuf": "yusuf", "harun": "harun", "ilyas": "ilyas", "al-yasa": "al_yasa",
+    "al yasa": "al_yasa", "dhul-kifl": "dhul_kifl", "dhul kifl": "dhul_kifl",
+    "muhammad": "muhammad", "mohammed": "muhammad", "mahomet": "muhammad",
+}
+
+
+def _prophet_key(name: str) -> str | None:
+    raw = name.strip().lower().replace("'", "")
+    if raw in PROPHET_STORIES:
+        return raw
+    if raw in PROPHET_STORY_ALIASES:
+        return PROPHET_STORY_ALIASES[raw]
+    normalized = raw.replace("-", " ").replace("_", " ").strip()
+    for key in PROPHET_STORIES:
+        if normalized == key.replace("_", " "):
+            return key
+    return None
+
+
+def _story_verse(ref: str, note: str) -> str:
+    surah, _, ayah = ref.partition(":")
+    try:
+        s, a = int(surah), int(ayah)
+    except ValueError:
+        return f"(Référence à vérifier : {ref})"
+    row = db.get_ayah(s, a)
+    if not row:
+        return f"(Référence à vérifier : {ref})"
+    return f"{quran.format_ayah(row)}\n*{note}*"
+
+
+def _show_story(key: str) -> str:
+    p = PROPHET_STORIES[key]
+    lines = [f"🕊️ Histoire de {p['name']} — {p['title']}", "=" * 60, "", p["story"], "", "📖 Versets clés :"]
+    for ref, note in p["verses"]:
+        lines.append("\n" + _story_verse(ref, note))
+    lines.append("\n💡 Leçon à retenir : " + p["lesson"])
+    return "\n".join(lines)
+
+
+def _list_stories() -> str:
+    out = [
+        "🕊️ Les histoires des prophètes (25)",
+        "=" * 60,
+        "Tape : histoires <nom>  pour lire une histoire.",
+        "",
+    ]
+    for i, key in enumerate(PROPHET_STORIES, 1):
+        out.append(f"{i:>2}. {PROPHET_STORIES[key]['name']}")
+    out.append("\nExemple : histoires yusuf, histoires musa, histoires muhammad")
+    return "\n".join(out)
+
+
+def _stories_dispatch(args: list[str]) -> str:
+    if not args or args[0].lower() in ("aide", "help", "liste", "list"):
+        return _list_stories()
+    key = _prophet_key(args[0])
+    if not key:
+        return f"Prophète inconnu : « {args[0]} ». Tape 'histoires' pour la liste."
+    return _show_story(key)
+
+
 def _list_important_surahs() -> str:
     """Affiche les sourates importantes du Coran."""
     out = [
@@ -728,116 +1166,265 @@ def _list_important_surahs() -> str:
     return "\n".join(out)
 
 
-def _translate_to_wolof(text: str, reference: str) -> str:
-    """Traduit un texte (verset ou hadith) en wolof via l'IA locale."""
-    if not llm.is_available():
-        return (
-            "⚠️ Ollama (modèle qwen2.5:7b) ne tourne pas ou le modèle n'est pas tiré.\n"
-            "Lance : ./setup.sh  puis réessaie."
-        )
-    print("🤖 Traduction en wolof (IA locale)…\n")
-    context = f"[{reference}]\n{text}"
-    prompt = (
-        "Traduis ce texte en WOLOF (langue du Sénégal), en t'efforçant d'être fidèle au sens.\n"
-        "Règles :\n"
-        "1. Traduis le sens en wolof de manière claire et naturelle.\n"
-        "2. Garde les termes religieux arabes courants (Allah, etc.) tels quels.\n"
-        "3. Donne ensuite une traduction française de référence en dessous.\n"
-        "4. Réponds d'abord en wolof, puis en français.\n"
-        "RÈGLE ABSOLUE : ne cite que le texte fourni ci-dessous. "
-        "N'invente AUCUNE citation ni numéro de hadith."
-    )
-    msgs = llm.teacher_messages(prompt, context)
-    text = llm.chat(msgs, stream=False, strict=True)
-    print(text, flush=True)
-    return ""
+PRAYER_LABELS = {
+    "imsak": "Imsak",
+    "fajr": "Aube (Fajr)",
+    "sunrise": "Lever du soleil",
+    "dhuhr": "Midi (Dhuhr)",
+    "asr": "Après-midi (Asr)",
+    "maghrib": "Coucher du soleil (Maghrib)",
+    "isha": "Nuit (Isha)",
+}
 
 
-def _wolof_dispatch(args: list[str]) -> str:
-    """Dispatch des commandes wolof."""
+def _parse_latlon(args: list[str]) -> tuple[float, float, str | None] | None:
+    """Parse ['lat', 'lon', 'timezone'] → triplette, ou None si invalide."""
+    if len(args) < 2:
+        return None
+    try:
+        lat, lng = float(args[0]), float(args[1])
+    except ValueError:
+        return None
+    tz = " ".join(args[2:]).strip() or None
+    return lat, lng, tz
+
+
+def _hijri() -> str:
+    from agent import api
+
+    try:
+        data = api.hijri()
+        hij, greg = data["hijri"], data["gregorian"]
+    except api.ApiError as exc:
+        return str(exc)
+    lines = [
+        "📅 Date islamique (hijri)",
+        "=" * 60,
+        f"{hij['formatted']}  ·  {hij['month_name_arabic']} ({hij['month_name']})",
+        f"Géorgien : {greg['formatted']}",
+        f"Ère : {hij['era']}",
+    ]
+    try:
+        events = api.islamic_events()
+        next_event = events.get("next_event")
+        if next_event:
+            lines.append("")
+            lines.append(f"⏳ Prochain événement : {next_event['name']} — {next_event['hijri_date']}")
+    except api.ApiError:
+        pass
+    lines.append("")
+    lines.append("ℹ Les dates peuvent varier de 1 à 2 jours selon l'observation de la lune.")
+    return "\n".join(lines)
+
+
+def _prayer_times(args: list[str]) -> str:
+    from agent import api
+
     if not args:
-        return HELP_WOLOF
-    sub = args[0].lower()
-    
-    if sub == "aide" or sub == "help":
-        return HELP_WOLOF
-    
-    # wolof coran <ref>
-    if sub == "coran":
-        if len(args) < 2:
-            return "Usage : wolof coran <sourate:verset> (ex : wolof coran 1:1)"
-        try:
-            surah, start, end = quran.parse_ref(" ".join(args[1:]))
-        except ValueError:
-            return "Référence incomprise. Exemple : wolof coran 1:1"
-        meta = db.get_surah_meta(surah)
-        if not meta:
-            return f"Sourate {surah} introuvable."
-        row = db.get_ayah(surah, start)
-        if not row:
-            return f"Verset {surah}:{start} introuvable."
-        text = f"{row['text_ar']}\n{row['text_fr']}"
-        ref = f"Coran {surah}:{start} — {meta['transliteration']}"
-        return _translate_to_wolof(text, ref)
-    
-    # wolof hadith <livre> <n>
-    if sub == "hadith":
-        if len(args) < 3:
-            return "Usage : wolof hadith <livre> <n°> (ex : wolof hadith bukhari 1)"
-        book = resolve_book_input(args[1])
-        if not book:
-            return f"Livre inconnu : « {args[1]} ». Voir 'hadith livres'."
-        try:
-            n = int(args[2])
-        except ValueError:
-            return "Le n° doit être un entier."
-        row = db.get_hadith(book, n)
-        if not row:
-            return f"Hadith n°{n} du livre « {book} » introuvable."
-        text = f"Narrateur : {row['narrator_en'] or '?'}\n{row['text_en']}\n{row['arabic'] or ''}"
-        ref = f"Hadith — {row['book_name']} n°{row['hadith_number']}"
-        return _translate_to_wolof(text, ref)
-    
-    # wolof <texte libre> → on traduit la question / demande en wolof
-    return _translate_to_wolof(" ".join(args), "texte fourni")
-
-
-HELP_WOLOF = """\
-🇸🇳 WOLOF — Traduction en wolof (Sénégal)
-
-  wolof coran <ref>              → traduire un verset en wolof (ex : wolof coran 1:1)
-  wolof hadith <livre> <n>       → traduire un hadith en wolof (ex : wolof hadith bukhari 1)
-  wolof <texte>                  → traduire un texte libre en wolof
-  wolof aide                     → cette aide
-
-Exemple : wolof coran 2:255  (Ayat al-Kursi en wolof)
-          wolof hadith bukhari 1  (premier hadith en wolof)
-
-Note : ces traductions sont pédagogiques, produites par l'IA locale.
-"""
-
-
-def ask_llm(question: str) -> str:
-    if not llm.is_available():
         return (
-            "⚠️ Ollama (modèle qwen2.5:7b) ne tourne pas ou le modèle n'est pas tiré.\n"
-            "Lance : ./setup.sh  puis réessaie."
+            "Usage : prieres <ville> [pays] | prieres <lat> <lon> [timezone]\n"
+            "Exemples : prieres Dakar | prieres Dakar Senegal | prieres 14.69 -17.44"
         )
-    print("🔎 Recherche dans le corpus local…")
-    context = _grounding_context(question)
-    print("🤖 L'IA réfléchit…\n")
-    msgs = llm.teacher_messages(question, context)
-    llm.chat(msgs, strict=True)
-    return ""
+    coords = _parse_latlon(args)
+    if coords:
+        lat, lng, tz = coords
+        place = f"{lat}, {lng}"
+    else:
+        city = args[0]
+        country = " ".join(args[1:]) if len(args) > 1 else None
+        try:
+            place_info = api.geocode(city, country)
+        except api.ApiError as exc:
+            return str(exc)
+        if not place_info:
+            return f"Ville « {city} » introuvable (géocodage Open-Meteo)."
+        lat, lng = place_info["latitude"], place_info["longitude"]
+        tz = place_info.get("timezone")
+        place = f"{place_info['name']} ({place_info.get('country', '')})"
+    try:
+        data = api.prayer_times(lat, lng, timezone=tz)
+    except api.ApiError as exc:
+        return str(exc)
+    lines = [
+        f"🕌 Horaires de prière — {place}",
+        "=" * 60,
+        f"Date : {data['date']}   ·   Méthode : {data.get('calculation_method')}   ·   Madhhab : {data.get('madhab')}",
+        "",
+    ]
+    times = data.get("prayer_times", {})
+    for key, label in PRAYER_LABELS.items():
+        if key in times:
+            lines.append(f"  ·  {label:<30} {times[key]}")
+    status = data.get("current_status") or {}
+    if status.get("next_prayer"):
+        lines.append("")
+        lines.append(
+            f"⏱ Actuellement : {status.get('current_prayer', '?')} → prochaine prière : "
+            f"{status['next_prayer']} ({status.get('time_until_next', '?')})"
+        )
+    lines.append("")
+    lines.append("ℹ Calcul astronomique — les horaires des mosquées locales peuvent varier légèrement.")
+    return "\n".join(lines)
+
+
+def _qibla(args: list[str]) -> str:
+    from agent import api
+
+    coords = _parse_latlon(args)
+    if not coords:
+        return "Usage : qibla <latitude> <longitude>\nExemple : qibla 14.69 -17.44 (Dakar)"
+    lat, lng, _ = coords
+    try:
+        data = api.qibla(lat, lng)
+    except api.ApiError as exc:
+        return str(exc)
+    lines = [
+        "🧭 Direction de la Qibla",
+        "=" * 60,
+        f"Position : {data['location']['latitude']}, {data['location']['longitude']}",
+        f"Direction : {data['qibla_direction']}° ({data.get('compass_bearing', '')})",
+        f"Distance de la Kaaba : {data.get('distance_km', 0):.0f} km ({data.get('distance_miles', 0):.0f} mi)",
+        "",
+        "ℹ Angle par rapport au nord géographique (vrai nord), pas le nord magnétique.",
+    ]
+    return "\n".join(lines)
+
+
+def _tafsir(args: list[str]) -> str:
+    from agent import api
+
+    if not args:
+        return "Usage : tafsir <sourate>[:<verset>]\nExemples : tafsir 2:255, tafsir 1"
+    try:
+        surah, ayah, _ = quran.parse_ref(" ".join(args))
+    except ValueError:
+        return "Référence incomprise. Exemples : tafsir 2:255, tafsir 1"
+    if ayah is None:
+        ayah = 1
+    meta = db.get_surah_meta(surah)
+    if not meta:
+        return f"Sourate {surah} introuvable (1–114)."
+    if not 1 <= ayah <= meta["total_verses"]:
+        return f"Le verset {surah}:{ayah} n'existe pas (la sourate a {meta['total_verses']} versets)."
+    try:
+        data = api.tafsir(surah, ayah)
+    except api.ApiError as exc:
+        return str(exc)
+    row = db.get_ayah(surah, ayah)
+    lines = [f"📜 Tafsir Ibn Kathir — Coran {surah}:{ayah} ({meta['transliteration']})", "=" * 60]
+    if row:
+        lines += ["", row["text_ar"], f"  — {row['text_fr']}", f"  – {row['text_en']}", ""]
+    text = (data.get("tafsir") or {}).get("text", "").strip()
+    if not text:
+        return "\n".join(lines) + "\n(Tafsir non disponible pour ce verset.)"
+    if len(text) > 2200:
+        text = text[:2200] + "\n…"
+    lines.append(text)
+    lines.append("")
+    lines.append("ℹ Tafsir Ibn Kathir (abrégé, en anglais) via l'API UmmahAPI.")
+    return "\n".join(lines)
+
+
+# ── Complétion par TAB (readline) ────────────────────────────
+_ALL_COMMANDS = [
+    "aide", "apprendre", "coran", "foi",
+    "hadith", "hijri", "histoires", "noms", "piliers", "prieres",
+    "prophètes", "qibla", "quiz", "sourates", "tafsir", "quitter",
+]
+
+_ALL_ALIASES = [
+    "exit", "help", "histoire", "learn", "priere",
+    "prophetes", "quit", "récits", "recits", "stories", "?",
+]
+
+_SUBCOMMANDS = {
+    "coran": ["chercher", "list"],
+    "hadith": ["hasard", "chercher", "livres", "liste", "livre", "hadith"],
+    "apprendre": ["lecon", "terminer"],
+    "quiz": ["coran", "hadith", "mixte"],
+    "sourates": ["importantes"],
+    "histoires": ["aide", "liste"],
+}
+
+
+def _complete_candidates(line: str, text: str) -> list[str]:
+    """Propose des complétions pour la ligne saisie (insensible à la casse)."""
+
+    def books() -> list[str]:
+        return [b["slug"] for b in db.list_books()]
+
+    def prophets() -> list[str]:
+        return sorted(set(PROPHET_STORIES) | set(PROPHET_STORY_ALIASES))
+
+    def lessons() -> list[str]:
+        return sorted({l["id"] for l in curriculum.LESSONS})
+
+    tokens = line.split()
+    trailing_space = line.endswith((" ", "\t"))
+    if trailing_space or not tokens:
+        completed, current = tokens, text
+    else:
+        completed, current = tokens[:-1], tokens[-1]
+    lower = current.strip().lower()
+
+    if not completed:
+        names = {c.lower(): c for c in _ALL_COMMANDS + _ALL_ALIASES}
+        return sorted(n for n in names if n.startswith(lower))
+
+    cmd = completed[0].lower()
+    n_after = len(completed) - 1
+
+    # Premier mot d'argument : sous-commandes (ou entités propres à la commande)
+    if n_after == 0:
+        subs = list(_SUBCOMMANDS.get(cmd, ()))
+        if cmd == "apprendre":
+            subs += lessons()
+        if cmd == "histoires":
+            subs += prophets()
+        return sorted(s for s in set(subs) if s.lower().startswith(lower))
+
+    second = completed[1].lower()
+
+    if cmd == "apprendre" and second in ("lecon", "terminer"):
+        return sorted(i for i in lessons() if i.startswith(lower))
+
+    if cmd == "histoires":
+        return sorted(p for p in prophets() if p.startswith(lower))
+
+    if cmd == "hadith":
+        later = [c.lower() for c in completed[1:]]
+        if "livre" in later:
+            return sorted(b for b in books() if b.startswith(lower))
+        if second in ("hasard", "livre", "hadith") and n_after == 1:
+            return sorted(b for b in books() if b.startswith(lower))
+
+    return []
+
+
+def _completer(text: str, state: int) -> str | None:
+    import readline
+
+    options = _complete_candidates(readline.get_line_buffer(), text)
+    return options[state] if state < len(options) else None
+
+
+def _enable_tab_completion() -> None:
+    import readline
+
+    readline.set_completer(_completer)
+    readline.set_completer_delims(" \t\n")
+    readline.parse_and_bind("tab: complete")
+    readline.parse_and_bind("set show-all-if-ambiguous on")
 
 
 def repl() -> None:
+    _enable_tab_completion()
     print(HELP)
     first = True
     while True:
         try:
             if first:
-                print("\nCommencer ? 'apprendre' pour le plan, 'quiz' pour tester, 'demander' pour poser une question.\n")
+                print("\nCommencer ? 'apprendre' pour le plan, 'quiz' pour tester, ou 'aide' pour voir les commandes.\n")
                 first = False
             line = input("🕌 > ").strip()
         except (EOFError, KeyboardInterrupt):
