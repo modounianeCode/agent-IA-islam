@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Assistant islamique hors-ligne : Coran, hadiths, plan d'apprentissage et quiz.">
+  <title>{% block title %}Assistant islamique{% endblock %} · Apprendre l'Islam</title>
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('agent-ia-theme');
+        if (!stored && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          stored = 'dark';
+        }
+        if (stored === 'dark' || stored === 'light') {
+          document.documentElement.dataset.theme = stored;
+        }
+      } catch (error) { /* stockage indisponible */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☪</text></svg>">
+</head>
+<body>
+  <a class="skip-link" href="#contenu">Aller au contenu</a>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="{{ url_for('index') }}">
+        <span class="brand-mark" aria-hidden="true">☪</span>
+        <span class="brand-text">
+          <strong>Apprendre l'Islam</strong>
+          <small>Assistant hors-ligne</small>
+        </span>
+      </a>
+
+      <nav class="nav" aria-label="Navigation principale">
+        <a class="nav-link {{ 'is-active' if active == 'index' }}" href="{{ url_for('index') }}">
+          <span class="nav-icon" aria-hidden="true">⌂</span> Accueil
+        </a>
+        <a class="nav-link {{ 'is-active' if active == 'coran' }}" href="{{ url_for('coran') }}">
+          <span class="nav-icon" aria-hidden="true">📖</span> Coran
+        </a>
+        <a class="nav-link {{ 'is-active' if active == 'hadiths' }}" href="{{ url_for('hadiths') }}">
+          <span class="nav-icon" aria-hidden="true">🕌</span> Hadiths
+        </a>
+        <a class="nav-link {{ 'is-active' if active == 'apprendre' }}" href="{{ url_for('apprendre') }}">
+          <span class="nav-icon" aria-hidden="true">🎓</span> Apprendre
+        </a>
+        <a class="nav-link {{ 'is-active' if active == 'quiz' }}" href="{{ url_for('quiz_page') }}">
+          <span class="nav-icon" aria-hidden="true">✎</span> Quiz
+        </a>
+        <a class="nav-link {{ 'is-active' if active == 'outils' }}" href="{{ url_for('outils') }}">
+          <span class="nav-icon" aria-hidden="true">🧭</span> Outils
+        </a>
+      </nav>
+
+      <div class="sidebar-progress">
+        <div class="eyebrow">Progression</div>
+        <div class="progress" role="progressbar" aria-valuenow="{{ sidebar_progress.percent }}" aria-valuemin="0" aria-valuemax="100">
+          <span style="width: {{ sidebar_progress.percent }}%"></span>
+        </div>
+        <p class="progress-label">
+          {{ sidebar_progress.count }}/{{ sidebar_progress.total }} leçons
+          <span>{{ sidebar_progress.percent }} %</span>
+        </p>
+      </div>
+
+      <div class="sidebar-foot">
+        <span class="status-dot" aria-hidden="true"></span>
+        Base locale · {{ global_stats.ayahs }} versets · {{ global_stats.hadiths }} hadiths
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <div class="topbar-title">{% block page_title %}Accueil{% endblock %}</div>
+        <div class="topbar-actions">
+          <a class="topbar-link" href="{{ url_for('outils') }}">Date hijri &amp; prières</a>
+          <button class="icon-btn" id="theme-toggle" type="button" aria-label="Changer de thème" title="Changer de thème">🌙</button>
+        </div>
+      </header>
+
+      <main class="content" id="contenu">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category }}" role="status">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="footer">
+        <p>Outil d'apprentissage — pas une source d'autorité religieuse. Les citations proviennent de la base locale.</p>
+        <p class="footer-meta">Coran (Hamidullah) · 17 recueils de hadiths · {{ current_year }}</p>
+      </footer>
+    </div>
+  </div>
+
+  <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

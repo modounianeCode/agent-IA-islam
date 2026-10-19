@@ -8,9 +8,14 @@ version = "1.0.0"
 description = "Assistant islamique hors ligne avec Coran, hadiths, quiz et apprentissage"
 readme = "README.md"
 requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.1.3",
+    "ollama>=0.3.0",
+]
 
 [tool.setuptools]
 packages = ["agent"]
 
 [project.scripts]
 agent-ia = "agent.cli:main"
+agent-ia-web = "agent.web:main"

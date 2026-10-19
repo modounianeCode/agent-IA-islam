@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Erreur serveur{% endblock %}
+{% block page_title %}Erreur serveur{% endblock %}
+
+{% block content %}
+<section class="panel empty-page">
+  <p class="eyebrow">Erreur 500</p>
+  <h1>Une erreur inattendue est survenue.</h1>
+  <p class="page-subtitle">Vérifiez que la base locale <code>data/agent.db</code> est bien présente, puis réessayez.</p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="{{ url_for('index') }}">Retour à l'accueil</a>
+  </div>
+</section>
+{% endblock %}

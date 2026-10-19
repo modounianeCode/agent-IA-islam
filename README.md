@@ -50,6 +50,38 @@ Le script crée un environnement virtuel, installe les dépendances, télécharg
 
 ---
 
+## Interface graphique web
+
+Une interface web locale complète est disponible, en plus de la ligne de commande.
+
+```bash
+source .venv/bin/activate
+python webapp.py
+```
+
+Puis ouvrir <http://127.0.0.1:5000>.
+
+Options utiles :
+
+```bash
+python webapp.py --port 8080        # changer le port
+python webapp.py --host 0.0.0.0     # rendre accessible sur le réseau local
+python webapp.py --debug            # mode développement Flask
+```
+
+L'interface propose :
+
+- **Accueil** : progression, verset du jour, hadith du jour, accès rapide
+- **Coran** : lecture par sourate ou plage de versets, recherche française/arabe, tafsir à la demande
+- **Hadiths** : recherche thématique, consultation par recueil et numéro, hadith au hasard
+- **Apprendre** : plan par modules, leçons, références Coran/hadiths, validation de la progression
+- **Quiz** : quiz Coran, hadiths ou mixte, correction et explication immédiates
+- **Outils** : date hijri, horaires de prière, qibla et tafsir (connexion Internet requise)
+
+Le rendu est responsive (mobile et bureau) et propose un thème clair/sombre. Le serveur Flask est prévu pour un usage local ; pour un déploiement public, utilisez un serveur WSGI de production.
+
+---
+
 ## Utilisation
 
 ### Mode interactif
@@ -76,10 +108,14 @@ python apprendre_islam.py tafsir 2:255
 
 ```text
 apprendre_islam.py      Point d'entrée CLI
+webapp.py               Point d'entrée de l'interface web
+templates/              Templates Jinja2 de l'interface web
+static/                 CSS et JavaScript de l'interface web
 agent/
   __init__.py           Version et package du projet
   __main__.py           Exécution via python -m agent
   cli.py                Interface de commandes et REPL
+  web.py                Application Flask et routes de l'interface
   db.py                 Base SQLite + recherche FTS5
   ingest.py             Téléchargement des données et construction de la base
   quran.py              Lecture et recherche du Coran
@@ -87,6 +123,7 @@ agent/
   api.py                API islamique externe (hijri, prière, qibla, tafsir)
   curriculum.py         Plan d'apprentissage
   quiz.py               Générateur de quiz
+  llm.py                Client Ollama local
 
 data/
   raw/                  Données sources brutes

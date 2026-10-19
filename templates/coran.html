@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Coran{% endblock %}
+{% block page_title %}Le Coran{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Lecture &amp; recherche</p>
+    <h1>Le Coran</h1>
+    <p class="page-subtitle">Texte arabe, traduction française de Muhammad Hamidullah et traduction anglaise.</p>
+  </div>
+  <form class="search-form" method="get" action="{{ url_for('coran') }}" role="search">
+    <label class="sr-only" for="coran-q">Rechercher dans le Coran</label>
+    <input id="coran-q" type="search" name="q" value="{{ query }}" placeholder="Rechercher un mot, un thème…">
+    <button class="btn btn-primary" type="submit">Rechercher</button>
+  </form>
+</div>
+
+{% if query %}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Résultats</p>
+        <h2>{{ search_results|length }} verset(s) pour « {{ query }} »</h2>
+      </div>
+      <a class="text-link" href="{{ url_for('coran') }}">← Retour à la lecture</a>
+    </div>
+
+    {% if search_results %}
+      <div class="result-list">
+        {% for item in search_results %}
+          <article class="result-card">
+            <div class="result-head">
+              <a class="result-ref" href="{{ url_for('coran', sourate=item.surah) }}#v-{{ item.surah }}-{{ item.ayah }}">
+                Coran {{ item.surah }}:{{ item.ayah }}
+              </a>
+              {% if item.meta %}
+                <span class="pill">{{ item.meta.transliteration }}</span>
+              {% endif %}
+            </div>
+            <p class="arabic" lang="ar" dir="rtl">{{ item.text_ar }}</p>
+            {% if item.text_fr %}<p class="translation">{{ item.text_fr }}</p>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">Aucun verset ne contient « {{ query }} ». Essayez un autre terme ou consultez les 114 sourates.</p>
+    {% endif %}
+  </section>
+{% else %}
+  <div class="split-layout">
+    <aside class="panel surah-panel">
+      <div class="panel-head panel-head-compact">
+        <div>
+          <p class="eyebrow">Sommaire</p>
+          <h2>Les 114 sourates</h2>
+        </div>
+      </div>
+      <label class="sr-only" for="surah-filter">Filtrer les sourates</label>
+      <input id="surah-filter" class="filter-input" type="search" placeholder="Filtrer une sourate…" autocomplete="off">
+      <div class="surah-list" id="surah-list">
+        {% for s in surahs %}
+          <a class="surah-item {{ 'is-current' if selected and s.id == selected.id }}"
+             href="{{ url_for('coran', sourate=s.id) }}"
+             data-name="{{ s.id }} {{ s.transliteration }} {{ s.name_fr }} {{ s.name_ar }}">
+            <span class="surah-number">{{ s.id }}</span>
+            <span class="surah-names">
+              <strong>{{ s.transliteration }}</strong>
+              <small>{{ s.name_fr }}</small>
+            </span>
+            <span class="surah-ar" lang="ar" dir="rtl">{{ s.name_ar }}</span>
+          </a>
+        {% endfor %}
+      </div>
+      <p class="empty empty-small" id="surah-empty" hidden>Aucune sourate trouvée.</p>
+    </aside>
+
+    <section class="panel reader-panel">
+      {% if selected %}
+        <header class="surah-header">
+          <div>
+            <p class="eyebrow">Sourate {{ selected.id }}</p>
+            <h2>{{ selected.transliteration }}</h2>
+            <p class="surah-subtitle">{{ selected.name_fr }} · {{ selected.name_ar }}</p>
+          </div>
+          <div class="surah-badges">
+            <span class="pill">{{ selected.type }}</span>
+            <span class="pill">{{ selected.total_verses }} versets</span>
+          </div>
+        </header>
+
+        <form class="range-form" method="get" action="{{ url_for('coran') }}">
+          <input type="hidden" name="sourate" value="{{ selected.id }}">
+          <label>Afficher du verset
+            <input type="number" name="debut" min="1" max="{{ selected.total_verses }}" value="{{ start or 1 }}">
+          </label>
+          <label>au verset
+            <input type="number" name="fin" min="1" max="{{ selected.total_verses }}" value="{{ end or selected.total_verses }}">
+          </label>
+          <button class="btn btn-subtle" type="submit">Afficher la plage</button>
+          <a class="text-link" href="{{ url_for('coran', sourate=selected.id) }}">Sourate complète</a>
+        </form>
+
+        {% if verses %}
+          <div class="verse-list">
+            {% for v in verses %}
+              <article class="verse" id="v-{{ v.surah }}-{{ v.ayah }}">
+                <div class="verse-head">
+                  <span class="verse-number">{{ v.surah }}:{{ v.ayah }}</span>
+                  <form method="post" action="{{ url_for('outils') }}">
+                    <input type="hidden" name="action" value="tafsir">
+                    <input type="hidden" name="ref" value="{{ v.surah }}:{{ v.ayah }}">
+                    <button class="text-link text-link-button" type="submit">Tafsir ↗</button>
+                  </form>
+                </div>
+                <p class="arabic" lang="ar" dir="rtl">{{ v.text_ar }}</p>
+                {% if v.text_fr %}<p class="translation">{{ v.text_fr }}</p>{% endif %}
+                {% if v.text_en %}<p class="translation translation-en">{{ v.text_en }}</p>{% endif %}
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty">Aucun verset trouvé pour cette plage.</p>
+        {% endif %}
+      {% else %}
+        <p class="empty">Choisissez une sourate dans le sommaire.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}
+{% endblock %}

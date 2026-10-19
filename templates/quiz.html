@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Quiz{% endblock %}
+{% block page_title %}Quiz de révision{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Réviser en s'amusant</p>
+    <h1>Quiz de révision</h1>
+    <p class="page-subtitle">Les questions et les réponses sont générées depuis les textes de la base locale.</p>
+  </div>
+</div>
+
+<section class="panel quiz-config" id="quiz-config">
+  <div class="quiz-config-grid">
+    <label>Type de quiz
+      <select id="quiz-type">
+        <option value="mixte">Mixte (Coran + hadiths)</option>
+        <option value="coran">Coran uniquement</option>
+        <option value="hadith">Hadiths uniquement</option>
+      </select>
+    </label>
+    <label>Nombre de questions
+      <select id="quiz-count">
+        <option value="5">5 questions</option>
+        <option value="10">10 questions</option>
+        <option value="15">15 questions</option>
+        <option value="20">20 questions</option>
+      </select>
+    </label>
+    <button class="btn btn-gold" id="quiz-start" type="button">Commencer le quiz</button>
+  </div>
+  <p class="quiz-hint">Chaque réponse est expliquée avec sa référence (sourate:verset ou recueil + numéro).</p>
+</section>
+
+<section class="panel quiz-panel" id="quiz-panel" hidden>
+  <div class="quiz-top">
+    <div>
+      <p class="eyebrow" id="quiz-progress-label">Question 1</p>
+      <h2 id="quiz-kind-label">Quiz mixte</h2>
+    </div>
+    <div class="quiz-score">
+      Score <strong id="quiz-score">0</strong>/<span id="quiz-total">0</span>
+    </div>
+  </div>
+  <div class="progress progress-small">
+    <span id="quiz-progress-bar" style="width: 0%"></span>
+  </div>
+
+  <div class="quiz-question" id="quiz-question"></div>
+  <div class="quiz-options" id="quiz-options" role="group" aria-label="Réponses possibles"></div>
+  <div class="quiz-feedback" id="quiz-feedback" aria-live="polite" hidden></div>
+
+  <div class="quiz-actions">
+    <button class="btn btn-primary" id="quiz-next" type="button" hidden>Question suivante →</button>
+  </div>
+</section>
+
+<section class="panel quiz-result" id="quiz-result" hidden>
+  <div class="result-emblem" aria-hidden="true">🏅</div>
+  <p class="eyebrow">Résultat</p>
+  <h2 id="quiz-result-title">Quiz terminé</h2>
+  <p class="quiz-result-score" id="quiz-result-score"></p>
+  <p id="quiz-result-message"></p>
+  <div class="hero-actions">
+    <button class="btn btn-primary" id="quiz-restart" type="button">Refaire un quiz</button>
+    <a class="btn btn-subtle" href="{{ url_for('apprendre') }}">Revoir le plan</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const API = {{ url_for('api_quiz')|tojson }};
+  const config = document.getElementById('quiz-config');
+  const panel = document.getElementById('quiz-panel');
+  const resultPanel = document.getElementById('quiz-result');
+  const startBtn = document.getElementById('quiz-start');
+  const nextBtn = document.getElementById('quiz-next');
+  const questionEl = document.getElementById('quiz-question');
+  const optionsEl = document.getElementById('quiz-options');
+  const feedbackEl = document.getElementById('quiz-feedback');
+  const progressBar = document.getElementById('quiz-progress-bar');
+  const progressLabel = document.getElementById('quiz-progress-label');
+  const kindLabel = document.getElementById('quiz-kind-label');
+  const scoreEl = document.getElementById('quiz-score');
+  const totalEl = document.getElementById('quiz-total');
+
+  let questions = [];
+  let index = 0;
+  let score = 0;
+  let answered = false;
+
+  function reset() {
+    questions = [];
+    index = 0;
+    score = 0;
+    answered = false;
+    questionEl.textContent = '';
+    optionsEl.innerHTML = '';
+    feedbackEl.hidden = true;
+    feedbackEl.className = 'quiz-feedback';
+    nextBtn.hidden = true;
+  }
+
+  function start() {
+    const type = document.getElementById('quiz-type').value;
+    const count = document.getElementById('quiz-count').value;
+    reset();
+    startBtn.disabled = true;
+    startBtn.textContent = 'Chargement…';
+    fetch(`${API}?type=${encodeURIComponent(type)}&n=${encodeURIComponent(count)}`)
+      .then((response) => {
+        if (!response.ok) throw new Error('Impossible de générer le quiz.');
+        return response.json();
+      })
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        questions = data.questions || [];
+        if (!questions.length) throw new Error('Aucune question générée.');
+        config.hidden = true;
+        resultPanel.hidden = true;
+        panel.hidden = false;
+        totalEl.textContent = String(questions.length);
+        scoreEl.textContent = '0';
+        kindLabel.textContent = type === 'coran' ? 'Quiz Coran' : type === 'hadith' ? 'Quiz hadiths' : 'Quiz mixte';
+        render();
+      })
+      .catch((error) => {
+        config.hidden = false;
+        panel.hidden = true;
+        alert(error.message || 'Erreur lors de la génération du quiz.');
+      })
+      .finally(() => {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Commencer le quiz';
+      });
+  }
+
+  function render() {
+    const q = questions[index];
+    answered = false;
+    feedbackEl.hidden = true;
+    feedbackEl.className = 'quiz-feedback';
+    nextBtn.hidden = true;
+    progressLabel.textContent = `Question ${index + 1} sur ${questions.length}`;
+    progressBar.style.width = `${(index / questions.length) * 100}%`;
+    questionEl.textContent = q.question;
+    optionsEl.innerHTML = '';
+    const letters = ['a', 'b', 'c', 'd'];
+
+    q.options.forEach((option, position) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'quiz-option';
+      button.innerHTML = `<span class="option-letter">${letters[position] || '•'}</span><span class="option-text"></span>`;
+      button.querySelector('.option-text').textContent = option;
+      button.addEventListener('click', () => choose(position, button));
+      optionsEl.appendChild(button);
+    });
+  }
+
+  function choose(position, button) {
+    if (answered) return;
+    answered = true;
+    const q = questions[index];
+    const correct = position === q.answer;
+    if (correct) score += 1;
+    scoreEl.textContent = String(score);
+
+    Array.from(optionsEl.children).forEach((child, i) => {
+      child.disabled = true;
+      if (i === q.answer) child.classList.add('is-correct');
+      if (i === position && !correct) child.classList.add('is-wrong');
+    });
+
+    feedbackEl.hidden = false;
+    feedbackEl.classList.add(correct ? 'is-good' : 'is-bad');
+    feedbackEl.innerHTML = '';
+    const title = document.createElement('strong');
+    title.textContent = correct ? '✅ Bonne réponse !' : '❌ Mauvaise réponse.';
+    const explain = document.createElement('p');
+    explain.textContent = q.explain || '';
+    feedbackEl.appendChild(title);
+    feedbackEl.appendChild(explain);
+
+    nextBtn.hidden = false;
+    nextBtn.textContent = index + 1 < questions.length ? 'Question suivante →' : 'Voir le résultat →';
+  }
+
+  function next() {
+    if (index + 1 < questions.length) {
+      index += 1;
+      render();
+    } else {
+      finish();
+    }
+  }
+
+  function finish() {
+    panel.hidden = true;
+    resultPanel.hidden = false;
+    progressBar.style.width = '100%';
+    const total = questions.length;
+    const percent = Math.round((score / total) * 100);
+    document.getElementById('quiz-result-score').textContent = `${score} / ${total} — ${percent} %`;
+    const title = document.getElementById('quiz-result-title');
+    const message = document.getElementById('quiz-result-message');
+    if (percent >= 80) {
+      title.textContent = 'Excellent travail !';
+      message.textContent = 'Les révisions portent leurs fruits. Continuez sur cette lancée.';
+    } else if (percent >= 50) {
+      title.textContent = 'Bon résultat';
+      message.textContent = 'Relisez les leçons du plan, puis retentez le quiz pour consolider.';
+    } else {
+      title.textContent = 'Continuez vos efforts';
+      message.textContent = 'Reprenez le plan d’apprentissage, puis revenez tester vos connaissances.';
+    }
+  }
+
+  startBtn.addEventListener('click', start);
+  nextBtn.addEventListener('click', next);
+  document.getElementById('quiz-restart').addEventListener('click', () => {
+    resultPanel.hidden = true;
+    config.hidden = false;
+    reset();
+  });
+})();
+</script>
+{% endblock %}

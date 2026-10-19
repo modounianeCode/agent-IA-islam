@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Outils{% endblock %}
+{% block page_title %}Outils en ligne{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Services islamiques</p>
+    <h1>Outils en ligne</h1>
+    <p class="page-subtitle">Date hijri, horaires de prière, qibla et tafsir. Ces outils nécessitent une connexion Internet.</p>
+  </div>
+</div>
+
+<div class="tool-columns">
+  <div class="tool-column">
+    <section class="panel">
+      <p class="eyebrow">Calendrier</p>
+      <h2>Date hijri</h2>
+      <p class="panel-subtitle">Date islamique du jour et prochain événement.</p>
+      <form method="post" action="{{ url_for('outils') }}">
+        <input type="hidden" name="action" value="hijri">
+        <button class="btn btn-primary" type="submit">Afficher la date</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <p class="eyebrow">Orientation</p>
+      <h2>Direction de la Qibla</h2>
+      <form class="stack-form" method="post" action="{{ url_for('outils') }}">
+        <input type="hidden" name="action" value="qibla">
+        <div class="form-row">
+          <label>Latitude
+            <input type="text" name="lat" inputmode="decimal" placeholder="14.69" value="{{ request.form.get('lat', '') }}">
+          </label>
+          <label>Longitude
+            <input type="text" name="lon" inputmode="decimal" placeholder="-17.44" value="{{ request.form.get('lon', '') }}">
+          </label>
+        </div>
+        <button class="btn btn-primary" type="submit">Calculer la direction</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="tool-column">
+    <section class="panel">
+      <p class="eyebrow">Prière</p>
+      <h2>Horaires de prière</h2>
+      <form class="stack-form" method="post" action="{{ url_for('outils') }}">
+        <input type="hidden" name="action" value="prieres">
+        <div class="form-row">
+          <label>Ville
+            <input type="text" name="city" placeholder="Dakar" value="{{ request.form.get('city', '') }}">
+          </label>
+          <label>Pays (optionnel)
+            <input type="text" name="country" placeholder="Sénégal" value="{{ request.form.get('country', '') }}">
+          </label>
+        </div>
+        <p class="form-or">ou coordonnées</p>
+        <div class="form-row">
+          <label>Latitude
+            <input type="text" name="lat" inputmode="decimal" placeholder="14.69" value="{{ request.form.get('lat', '') }}">
+          </label>
+          <label>Longitude
+            <input type="text" name="lon" inputmode="decimal" placeholder="-17.44" value="{{ request.form.get('lon', '') }}">
+          </label>
+        </div>
+        <label>Fuseau horaire (optionnel)
+          <input type="text" name="timezone" placeholder="Africa/Dakar" value="{{ request.form.get('timezone', '') }}">
+        </label>
+        <button class="btn btn-primary" type="submit">Calculer les horaires</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <p class="eyebrow">Exégèse</p>
+      <h2>Tafsir Ibn Kathir</h2>
+      <p class="panel-subtitle">Commentaire abrégé (en anglais) d'un verset.</p>
+      <form class="stack-form" method="post" action="{{ url_for('outils') }}">
+        <input type="hidden" name="action" value="tafsir">
+        <label>Référence
+          <input type="text" name="ref" placeholder="2:255" value="{{ request.form.get('ref', '') }}" required>
+        </label>
+        <button class="btn btn-primary" type="submit">Afficher le tafsir</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+{% if error %}
+  <div class="alert alert-warning" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if result %}
+  <section class="panel tool-result">
+    {% if result.kind == 'hijri' %}
+      {% set data = result.data %}
+      {% set hij = data.hijri %}
+      {% set greg = data.gregorian %}
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Date hijri</p>
+          <h2>{{ hij.formatted }}</h2>
+        </div>
+        <span class="pill">{{ hij.era }}</span>
+      </div>
+      <div class="hijri-grid">
+        <div class="hijri-item"><span>Mois</span><strong>{{ hij.month_name }}</strong><small lang="ar" dir="rtl">{{ hij.month_name_arabic }}</small></div>
+        <div class="hijri-item"><span>Date grégorienne</span><strong>{{ greg.formatted }}</strong></div>
+        {% if result.events and result.events.next_event %}
+          {% set event = result.events.next_event %}
+          <div class="hijri-item"><span>Prochain événement</span><strong>{{ event.name }}</strong><small>{{ event.hijri_date }}</small></div>
+        {% endif %}
+      </div>
+      <p class="panel-foot">ℹ Les dates peuvent varier de 1 à 2 jours selon l'observation de la lune.</p>
+
+    {% elif result.kind == 'prieres' %}
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Horaires de prière</p>
+          <h2>{{ result.place }}</h2>
+          <p class="panel-subtitle">{{ result.data.date }} · Méthode : {{ result.data.calculation_method }} · Madhhab : {{ result.data.madhab }}</p>
+        </div>
+      </div>
+      <div class="prayer-grid">
+        {% for label, time in result.times %}
+          <div class="prayer-item"><span>{{ label }}</span><strong>{{ time }}</strong></div>
+        {% endfor %}
+      </div>
+      {% set status = result.data.current_status %}
+      {% if status and status.next_prayer %}
+        <p class="panel-foot">⏱ Actuellement : {{ status.current_prayer }} → prochaine prière : {{ status.next_prayer }} ({{ status.time_until_next }})</p>
+      {% endif %}
+      <p class="panel-foot">ℹ Calcul astronomique — les horaires des mosquées locales peuvent varier légèrement.</p>
+
+    {% elif result.kind == 'qibla' %}
+      {% set data = result.data %}
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Direction de la Qibla</p>
+          <h2>{{ data.qibla_direction }}°</h2>
+          <p class="panel-subtitle">Position : {{ data.location.latitude }}, {{ data.location.longitude }}</p>
+        </div>
+        <span class="pill">{{ data.compass_bearing }}</span>
+      </div>
+      <div class="qibla-visual" aria-hidden="true">
+        <div class="qibla-arrow" style="transform: rotate({{ data.qibla_direction }}deg)"></div>
+      </div>
+      <p class="panel-foot">Distance de la Kaaba : {{ '%.0f'|format(data.distance_km or 0) }} km ({{ '%.0f'|format(data.distance_miles or 0) }} mi).</p>
+      <p class="panel-foot">ℹ Angle par rapport au nord géographique (vrai nord), pas le nord magnétique.</p>
+
+    {% elif result.kind == 'tafsir' %}
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Tafsir Ibn Kathir</p>
+          <h2>Coran {{ result.surah }}:{{ result.ayah }} · {{ result.meta.transliteration }}</h2>
+        </div>
+        <a class="text-link" href="{{ url_for('coran', sourate=result.surah) }}#v-{{ result.surah }}-{{ result.ayah }}">Lire dans le Coran →</a>
+      </div>
+      {% if result.row %}
+        <p class="arabic" lang="ar" dir="rtl">{{ result.row.text_ar }}</p>
+        {% if result.row.text_fr %}<p class="translation">{{ result.row.text_fr }}</p>{% endif %}
+      {% endif %}
+      {% if result.text %}
+        <div class="tafsir-text">{{ result.text }}</div>
+      {% else %}
+        <p class="empty">Tafsir non disponible pour ce verset.</p>
+      {% endif %}
+      <p class="panel-foot">ℹ Tafsir Ibn Kathir abrégé (en anglais) via l'API UmmahAPI.</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Accueil{% endblock %}
+{% block page_title %}Accueil{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-pattern" aria-hidden="true"></div>
+  <div class="hero-body">
+    <p class="eyebrow eyebrow-light">Assalamu alaykum</p>
+    <h1>Apprendre, comprendre et réviser<br>les fondements de l'islam.</h1>
+    <p class="hero-text">
+      Un compagnon d'étude hors-ligne, en français, appuyé sur le Coran
+      et 17 recueils de hadiths vérifiés dans votre base locale.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-gold" href="{{ url_for('apprendre') }}">Commencer le plan</a>
+      <a class="btn btn-ghost" href="{{ url_for('coran') }}">Lire le Coran</a>
+    </div>
+  </div>
+  <div class="hero-card">
+    <p class="eyebrow">Progression du parcours</p>
+    <div class="hero-progress-value">{{ progress.percent }}<span>%</span></div>
+    <div class="progress progress-light" role="progressbar" aria-valuenow="{{ progress.percent }}" aria-valuemin="0" aria-valuemax="100">
+      <span style="width: {{ progress.percent }}%"></span>
+    </div>
+    <p class="hero-progress-label">{{ progress.count }} leçon{{ 's' if progress.count != 1 }} validée{{ 's' if progress.count != 1 }} sur {{ progress.total }}</p>
+    {% if progress.next %}
+      <a class="hero-next" href="{{ url_for('lecon', lesson_id=progress.next.id) }}">
+        <span class="eyebrow">Prochaine leçon</span>
+        <strong>{{ progress.next.title }}</strong>
+        <span class="hero-next-link">Continuer →</span>
+      </a>
+    {% else %}
+      <p class="hero-complete">🎉 Parcours terminé. Qu'Allah accepte vos efforts.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="stat-grid" aria-label="Contenu de la base">
+  <article class="stat-card">
+    <span class="stat-icon">📖</span>
+    <div><strong>{{ global_stats.surahs }}</strong><span>sourates</span></div>
+    <small>{{ global_stats.ayahs }} versets en arabe, français et anglais</small>
+  </article>
+  <article class="stat-card">
+    <span class="stat-icon">🕌</span>
+    <div><strong>{{ global_stats.books }}</strong><span>recueils</span></div>
+    <small>{{ global_stats.hadiths }} hadiths indexés et consultables</small>
+  </article>
+  <article class="stat-card">
+    <span class="stat-icon">🎓</span>
+    <div><strong>{{ progress.total }}</strong><span>leçons</span></div>
+    <small>Un parcours structuré, de l'aqidah au fiqh</small>
+  </article>
+  <article class="stat-card">
+    <span class="stat-icon">✎</span>
+    <div><strong>4</strong><span>types de quiz</span></div>
+    <small>Coran, hadiths ou mixte, généré depuis la base</small>
+  </article>
+</section>
+
+<div class="dashboard-grid">
+  {% if daily_ayah.row %}
+  <section class="panel panel-ayah">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Verset du jour</p>
+        <h2>{{ daily_ayah.meta.transliteration }} · {{ daily_ayah.surah }}:{{ daily_ayah.ayah }}</h2>
+      </div>
+      <a class="text-link" href="{{ url_for('coran', sourate=daily_ayah.surah) }}#v-{{ daily_ayah.surah }}-{{ daily_ayah.ayah }}">Lire la sourate →</a>
+    </div>
+    <p class="arabic arabic-large" lang="ar" dir="rtl">{{ daily_ayah.row.text_ar }}</p>
+    <p class="translation">{{ daily_ayah.row.text_fr }}</p>
+    {% if daily_ayah.row.text_en %}
+      <p class="translation translation-en">{{ daily_ayah.row.text_en }}</p>
+    {% endif %}
+    <p class="panel-foot">{{ daily_ayah.meta.name_fr }} · {{ daily_ayah.meta.type }} · {{ daily_ayah.meta.total_verses }} versets</p>
+  </section>
+  {% endif %}
+
+  {% if daily_hadith %}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Hadith du jour</p>
+        <h2>{{ daily_hadith.book_name }} · n°{{ daily_hadith.hadith_number }}</h2>
+      </div>
+      <a class="text-link" href="{{ url_for('hadiths', livre=daily_hadith.book_slug, numero=daily_hadith.hadith_number) }}">Ouvrir la fiche →</a>
+    </div>
+    {% if daily_hadith.arabic %}
+      <p class="arabic" lang="ar" dir="rtl">{{ daily_hadith.arabic|truncate(420, true, '…') }}</p>
+    {% endif %}
+    {% if daily_hadith.narrator_en %}
+      <p class="hadith-narrator">{{ daily_hadith.narrator_en }}</p>
+    {% endif %}
+    <p class="hadith-text">{{ daily_hadith.text_en|truncate(650, true, '…') }}</p>
+  </section>
+  {% endif %}
+</div>
+
+<section class="quick-actions" aria-label="Accès rapide">
+  <a class="quick-card" href="{{ url_for('coran', q='miséricorde') }}">
+    <span class="quick-icon">🔎</span>
+    <strong>Rechercher dans le Coran</strong>
+    <small>Un thème, un mot, une référence</small>
+  </a>
+  <a class="quick-card" href="{{ url_for('hadiths', hasard=1) }}">
+    <span class="quick-icon">🎲</span>
+    <strong>Hadith au hasard</strong>
+    <small>Découvrir un texte authentique</small>
+  </a>
+  <a class="quick-card" href="{{ url_for('apprendre') }}">
+    <span class="quick-icon">🗺️</span>
+    <strong>Plan d'apprentissage</strong>
+    <small>{{ progress.count }}/{{ progress.total }} leçons validées</small>
+  </a>
+  <a class="quick-card" href="{{ url_for('quiz_page') }}">
+    <span class="quick-icon">🏅</span>
+    <strong>Tester ses connaissances</strong>
+    <small>Quiz corrigés et expliqués</small>
+  </a>
+</section>
+{% endblock %}

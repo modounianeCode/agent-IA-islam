@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Hadiths{% endblock %}
+{% block page_title %}Les hadiths{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">17 recueils · {{ global_stats.hadiths }} textes</p>
+    <h1>Les hadiths</h1>
+    <p class="page-subtitle">Recherchez par thème, consultez un hadith précis ou laissez-vous surprendre.</p>
+  </div>
+  <form method="get" action="{{ url_for('hadiths') }}">
+    {% if book %}<input type="hidden" name="livre" value="{{ book }}">{% endif %}
+    <input type="hidden" name="hasard" value="1">
+    <button class="btn btn-gold" type="submit">🎲 Hadith au hasard</button>
+  </form>
+</div>
+
+<div class="tool-grid">
+  <section class="panel">
+    <p class="eyebrow">Recherche thématique</p>
+    <h2>Chercher un hadith</h2>
+    <form class="stack-form" method="get" action="{{ url_for('hadiths') }}">
+      <label>Mot ou expression
+        <input type="search" name="q" value="{{ query }}" placeholder="patience, intention, prière…" required>
+      </label>
+      <label>Dans le recueil (optionnel)
+        <select name="livre">
+          <option value="">Tous les recueils</option>
+          {% for b in books %}
+            <option value="{{ b.slug }}" {{ 'selected' if book == b.slug }}>{{ b.name_en }} ({{ b.count }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">Rechercher</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Consultation directe</p>
+    <h2>Ouvrir un hadith précis</h2>
+    <form class="stack-form" method="get" action="{{ url_for('hadiths') }}">
+      <label>Recueil
+        <select name="livre">
+          {% for b in books %}
+            <option value="{{ b.slug }}" {{ 'selected' if book == b.slug }}>{{ b.name_en }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Numéro du hadith
+        <input type="number" name="numero" min="1" value="{{ number }}" placeholder="ex : 1" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Ouvrir la fiche</button>
+    </form>
+  </section>
+</div>
+
+{% if error %}
+  <div class="alert alert-warning" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if single %}
+  <section class="panel hadith-full">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Fiche du hadith</p>
+        <h2>{{ single.book_name }} · n°{{ single.hadith_number }}</h2>
+        {% if single.chapter_en %}<p class="panel-subtitle">{{ single.chapter_en }}</p>{% endif %}
+      </div>
+      <a class="text-link" href="{{ url_for('hadiths', hasard=1) }}">Autre hadith →</a>
+    </div>
+    {% if single.arabic %}
+      <p class="arabic arabic-large" lang="ar" dir="rtl">{{ single.arabic }}</p>
+    {% endif %}
+    {% if single.narrator_en %}
+      <p class="hadith-narrator">{{ single.narrator_en }}</p>
+    {% endif %}
+    <p class="hadith-text">{{ single.text_en }}</p>
+    {% if single.reference %}<p class="panel-foot">Référence : {{ single.reference }}</p>{% endif %}
+    <p class="panel-foot">Texte anglais issu de la base locale. Le texte arabe fait foi.</p>
+  </section>
+{% endif %}
+
+{% if results %}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Résultats</p>
+        <h2>{{ results|length }} hadith(s) pour « {{ query }} »</h2>
+      </div>
+      <a class="text-link" href="{{ url_for('hadiths') }}">Réinitialiser</a>
+    </div>
+    <div class="result-list">
+      {% for h in results %}
+        <article class="result-card">
+          <div class="result-head">
+            <a class="result-ref" href="{{ url_for('hadiths', livre=h.book_slug, numero=h.hadith_number) }}">
+              {{ h.book_name }} · n°{{ h.hadith_number }}
+            </a>
+            {% if h.chapter_en %}<span class="pill">{{ h.chapter_en|truncate(48, true, '…') }}</span>{% endif %}
+          </div>
+          {% if h.narrator_en %}<p class="hadith-narrator">{{ h.narrator_en }}</p>{% endif %}
+          {% if h.arabic %}<p class="arabic arabic-small" lang="ar" dir="rtl">{{ h.arabic|truncate(280, true, '…') }}</p>{% endif %}
+          <p class="hadith-text">{{ h.text_en|truncate(520, true, '…') }}</p>
+          <a class="text-link" href="{{ url_for('hadiths', livre=h.book_slug, numero=h.hadith_number) }}">Lire la fiche complète →</a>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{% if not single and not results and not error %}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Bibliothèque</p>
+        <h2>Les recueils disponibles</h2>
+      </div>
+    </div>
+    <div class="book-grid">
+      {% for b in books %}
+        <a class="book-card" href="{{ url_for('hadiths', livre=b.slug, hasard=1) }}">
+          <span class="book-ar" lang="ar" dir="rtl">{{ b.name_ar }}</span>
+          <strong>{{ b.name_en }}</strong>
+          <small>{{ b.count }} hadiths · hadith au hasard →</small>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

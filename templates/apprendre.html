@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Plan d'apprentissage{% endblock %}
+{% block page_title %}Plan d'apprentissage{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Niveau intermédiaire</p>
+    <h1>Plan d'apprentissage</h1>
+    <p class="page-subtitle">Un parcours progressif, appuyé sur des références authentiques lues dans la base locale.</p>
+  </div>
+  {% if progress.next %}
+    <a class="btn btn-gold" href="{{ url_for('lecon', lesson_id=progress.next.id) }}">
+      Continuer : {{ progress.next.title }}
+    </a>
+  {% endif %}
+</div>
+
+<section class="panel progress-panel">
+  <div class="progress-panel-body">
+    <div>
+      <p class="eyebrow">Votre progression</p>
+      <h2>{{ progress.count }} leçon{{ 's' if progress.count != 1 }} validée{{ 's' if progress.count != 1 }} sur {{ progress.total }}</h2>
+      <p class="page-subtitle">
+        {% if progress.next %}
+          Prochaine étape : <strong>{{ progress.next.title }}</strong> ({{ progress.next.id }})
+        {% else %}
+          🎉 Vous avez terminé le parcours. Qu'Allah accepte vos efforts.
+        {% endif %}
+      </p>
+    </div>
+    <div class="progress-ring" style="--value: {{ progress.percent }}">
+      <span>{{ progress.percent }}<small>%</small></span>
+    </div>
+  </div>
+  <div class="progress">
+    <span style="width: {{ progress.percent }}%"></span>
+  </div>
+</section>
+
+<div class="module-list">
+  {% for module in modules %}
+    <section class="panel module-card">
+      <div class="module-head">
+        <div>
+          <p class="eyebrow">Module {{ module.number }}</p>
+          <h2>{{ module.title }}</h2>
+        </div>
+        <div class="module-progress">
+          <span>{{ module.done }}/{{ module.total }}</span>
+          <div class="progress progress-small">
+            <span style="width: {{ module.percent }}%"></span>
+          </div>
+        </div>
+      </div>
+      <div class="lesson-list">
+        {% for lesson in module.lessons %}
+          <a class="lesson-row {{ 'is-done' if lesson.done }}" href="{{ url_for('lecon', lesson_id=lesson.id) }}">
+            <span class="lesson-status" aria-hidden="true">{{ '✓' if lesson.done else '○' }}</span>
+            <span class="lesson-id">{{ lesson.id }}</span>
+            <span class="lesson-title">{{ lesson.title }}</span>
+            <span class="lesson-arrow">→</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

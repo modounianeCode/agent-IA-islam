@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ lesson.title }}{% endblock %}
+{% block page_title %}Leçon {{ lesson.id }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Fil d'Ariane">
+  <a href="{{ url_for('apprendre') }}">Plan d'apprentissage</a>
+  <span aria-hidden="true">/</span>
+  <span>Module {{ lesson.module }}</span>
+  <span aria-hidden="true">/</span>
+  <span aria-current="page">{{ lesson.id }}</span>
+</nav>
+
+<article class="panel lesson-article">
+  <header class="lesson-header">
+    <div>
+      <p class="eyebrow">Module {{ lesson.module }} — {{ lesson.module_title }}</p>
+      <h1>{{ lesson.title }}</h1>
+      {% if done %}
+        <span class="badge badge-done">✓ Leçon validée</span>
+      {% endif %}
+    </div>
+    <span class="lesson-id-large">{{ lesson.id }}</span>
+  </header>
+
+  <div class="objectives">
+    <p class="eyebrow">Objectifs</p>
+    <ul>
+      {% for objective in lesson.objectives %}
+        <li>{{ objective }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="prose">{{ lesson.content }}</div>
+
+  <section class="references">
+    <div class="section-title">
+      <p class="eyebrow">Références authentiques</p>
+      <h2>Coran &amp; hadiths</h2>
+    </div>
+
+    {% for ref in quran_refs %}
+      <article class="reference-card">
+        <div class="result-head">
+          <a class="result-ref" href="{{ url_for('coran', sourate=ref.row.surah if ref.row else 1) }}{% if ref.row %}#v-{{ ref.row.surah }}-{{ ref.row.ayah }}{% endif %}">
+            Coran {{ ref.ref }}
+          </a>
+          {% if ref.meta %}<span class="pill">{{ ref.meta.transliteration }}</span>{% endif %}
+        </div>
+        {% if ref.note %}<p class="reference-note">{{ ref.note }}</p>{% endif %}
+        {% if ref.row %}
+          <p class="arabic" lang="ar" dir="rtl">{{ ref.row.text_ar }}</p>
+          {% if ref.row.text_fr %}<p class="translation">{{ ref.row.text_fr }}</p>{% endif %}
+        {% else %}
+          <p class="empty empty-small">Référence non trouvée dans la base locale.</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+
+    {% for ref in hadith_refs %}
+      <article class="reference-card">
+        <div class="result-head">
+          {% if ref.row %}
+            <a class="result-ref" href="{{ url_for('hadiths', livre=ref.row.book_slug, numero=ref.row.hadith_number) }}">
+              {{ ref.row.book_name }} · n°{{ ref.row.hadith_number }}
+            </a>
+          {% else %}
+            <span class="result-ref">{{ ref.book or 'Hadith' }}{% if ref.number %} · n°{{ ref.number }}{% endif %}</span>
+          {% endif %}
+          <span class="pill">Hadith</span>
+        </div>
+        {% if ref.note %}<p class="reference-note">{{ ref.note }}</p>{% endif %}
+        {% if ref.row %}
+          {% if ref.row.narrator_en %}<p class="hadith-narrator">{{ ref.row.narrator_en }}</p>{% endif %}
+          {% if ref.row.arabic %}<p class="arabic" lang="ar" dir="rtl">{{ ref.row.arabic|truncate(600, true, '…') }}</p>{% endif %}
+          <p class="hadith-text">{{ ref.row.text_en|truncate(900, true, '…') }}</p>
+        {% else %}
+          <p class="empty empty-small">Texte non trouvé dans la base locale.</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+
+  <footer class="lesson-footer">
+    <div class="lesson-nav">
+      {% if previous_lesson %}
+        <a class="btn btn-subtle" href="{{ url_for('lecon', lesson_id=previous_lesson.id) }}">← {{ previous_lesson.id }}</a>
+      {% endif %}
+      {% if following_lesson %}
+        <a class="btn btn-subtle" href="{{ url_for('lecon', lesson_id=following_lesson.id) }}">{{ following_lesson.id }} →</a>
+      {% endif %}
+    </div>
+    {% if done %}
+      <p class="done-message">✓ Cette leçon est déjà validée.</p>
+    {% else %}
+      <form method="post" action="{{ url_for('terminer_lecon', lesson_id=lesson.id) }}">
+        <button class="btn btn-primary" type="submit">Marquer la leçon comme terminée</button>
+      </form>
+    {% endif %}
+  </footer>
+</article>
+{% endblock %}
